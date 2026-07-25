@@ -1,5 +1,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/admin'
-import { getFlowBudgets } from '@/lib/portal/budget'
+import { getLedgerBalance } from '@/lib/portal/ledger'
+import { deriveFlowBudgets } from '@/lib/portal/budget'
+import { getSettingsMap } from '@/lib/portal/settings'
 
 /**
  * 自動売買の枠・キャパ・受注管理（⑦・docs/auto-trading-slots-design.md）。
@@ -13,12 +15,9 @@ export type AutoSettings = {
 
 const DEFAULTS: AutoSettings = { capacityTotal: 200, minDeposit: 1_000_000 }
 
-/** 全体設定を取得（system_settings。未設定は既定値）。 */
+/** 全体設定を取得（system_settings。未設定は既定値）。リクエスト内キャッシュで往復削減。 */
 export async function getAutoSettings(): Promise<AutoSettings> {
-  const supabase = createServiceRoleClient()
-  const { data } = await supabase.from('system_settings').select('key, value_int')
-  const map = new Map<string, number | null>()
-  for (const r of (data ?? []) as { key: string; value_int: number | null }[]) map.set(r.key, r.value_int)
+  const map = await getSettingsMap()
   return {
     capacityTotal: map.get('auto_capacity_total') ?? DEFAULTS.capacityTotal,
     minDeposit: map.get('auto_min_deposit') ?? DEFAULTS.minDeposit,
@@ -214,70 +213,121 @@ export type MemberAutoRow = {
   canAccept: boolean
 }
 
-/** 本部：自動売買権限を持つ全加盟者の枠・稼働・空きの一覧（キャパ管理ダッシュボード用）。 */
+/**
+ * 受注可否を「取得済みデータ」から純粋に算出する（DBアクセスなし）。
+ * 個別（getMemberAutoCapacity）とバルク（listAutoMembers）の両方から使い、ロジックを一元化（性能最適化A）。
+ * 判定・文言は従来と同一。
+ */
+export function computeMemberCapacity(input: {
+  ownedSlots: number
+  capitalPerSlot: number
+  autoBalance: number
+  minDeposit: number
+  activeCount: number
+  global: { active: number; total: number; available: number }
+}): MemberAutoCapacity {
+  const { ownedSlots, capitalPerSlot, autoBalance, minDeposit, activeCount, global } = input
+  const depositLocked = autoBalance < minDeposit
+  const eff = effectiveSlots({ ownedSlots, capitalPerSlot, autoBalance, minDeposit })
+  const availableSlots = Math.max(0, eff - activeCount)
+
+  let blockReason: string | undefined
+  if (depositLocked) blockReason = `預かり金が最低額（${minDeposit.toLocaleString()}円）に満たないため受注できません`
+  else if (eff <= 0) {
+    if (ownedSlots <= 0) blockReason = '自動売買の保有枠が0です。会員詳細で「自動売買 保有枠数」を1以上に設定してください'
+    else blockReason = `運用資金が不足しています（1枠あたり ${capitalPerSlot.toLocaleString()}円 に対し、自動売買用の預かり金は ${autoBalance.toLocaleString()}円）。預かり金の入金で有効枠が増えます`
+  }
+  else if (availableSlots <= 0) blockReason = `空き枠がありません（有効枠 ${eff} / 稼働 ${activeCount}）`
+  else if (global.available <= 0) blockReason = `全体の運用上限（${global.total}台）に達しています`
+
+  return {
+    ownedSlots, capitalPerSlot, autoBalance, minDeposit,
+    depositLocked, effectiveSlots: eff, activeCount, availableSlots,
+    globalActive: global.active, globalTotal: global.total, globalAvailable: global.available,
+    canAccept: !blockReason, blockReason,
+  }
+}
+
+/**
+ * 本部：自動売買権限を持つ全加盟者の枠・稼働・空きの一覧（キャパ管理ダッシュボード用）。
+ * N+1を避け、必要データを一括取得してメモリ集計する（性能最適化A・7×人数 → 数クエリ固定）。
+ */
 export async function listAutoMembers(): Promise<MemberAutoRow[]> {
   const supabase = createServiceRoleClient()
-  const { data: members } = await supabase
-    .from('members')
-    .select('id, member_name, company_name')
-    .eq('grant_auto', true)
-    .order('member_name', { ascending: true })
-  const rows = (members ?? []) as { id: string; member_name: string; company_name: string | null }[]
-  const caps = await Promise.all(rows.map((m) => getMemberAutoCapacity(m.id)))
-  return rows.map((m, i) => ({
-    memberId: m.id,
-    memberName: m.member_name,
-    companyName: m.company_name,
-    ownedSlots: caps[i].ownedSlots,
-    effectiveSlots: caps[i].effectiveSlots,
-    activeCount: caps[i].activeCount,
-    availableSlots: caps[i].availableSlots,
-    autoBalance: caps[i].autoBalance,
-    canAccept: caps[i].canAccept,
-  }))
+  const [settings, global, membersRes] = await Promise.all([
+    getAutoSettings(),
+    getGlobalAutoCapacity(),
+    supabase
+      .from('members')
+      .select('id, member_name, company_name, auto_slots, capital_per_slot_yen, grant_auto, grant_semi')
+      .eq('grant_auto', true)
+      .order('member_name', { ascending: true }),
+  ])
+  const rows = (membersRes.data ?? []) as { id: string; member_name: string; company_name: string | null; auto_slots: number; capital_per_slot_yen: number; grant_auto: boolean; grant_semi: boolean }[]
+  if (rows.length === 0) return []
+  const ids = rows.map((r) => r.id)
+
+  const [ledgers, allocs, activeDeals] = await Promise.all([
+    supabase.from('member_ledger').select('member_id, balance_yen').in('member_id', ids),
+    supabase.from('member_budget_alloc').select('member_id, auto_allocated_yen, semi_allocated_yen').in('member_id', ids),
+    supabase.from('vehicle_deals').select('member_id').eq('flow', 'auto').in('status', ACTIVE_STAGES as unknown as string[]).in('member_id', ids),
+  ])
+  const balMap = new Map<string, number>()
+  for (const l of (ledgers.data ?? []) as { member_id: string; balance_yen: number }[]) balMap.set(l.member_id, l.balance_yen)
+  const allocMap = new Map<string, { auto_allocated_yen: number; semi_allocated_yen: number }>()
+  for (const a of (allocs.data ?? []) as { member_id: string; auto_allocated_yen: number; semi_allocated_yen: number }[]) allocMap.set(a.member_id, { auto_allocated_yen: a.auto_allocated_yen, semi_allocated_yen: a.semi_allocated_yen })
+  const activeMap = new Map<string, number>()
+  for (const d of (activeDeals.data ?? []) as { member_id: string }[]) activeMap.set(d.member_id, (activeMap.get(d.member_id) ?? 0) + 1)
+
+  return rows.map((m) => {
+    const balance = balMap.get(m.id) ?? 0
+    const budgets = deriveFlowBudgets({ grantAuto: m.grant_auto, grantSemi: m.grant_semi, balance, alloc: allocMap.get(m.id) ?? null })
+    const cap = computeMemberCapacity({
+      ownedSlots: m.auto_slots ?? 0,
+      capitalPerSlot: m.capital_per_slot_yen ?? 4_000_000,
+      autoBalance: budgets.autoBudget,
+      minDeposit: settings.minDeposit,
+      activeCount: activeMap.get(m.id) ?? 0,
+      global,
+    })
+    return {
+      memberId: m.id, memberName: m.member_name, companyName: m.company_name,
+      ownedSlots: cap.ownedSlots, effectiveSlots: cap.effectiveSlots, activeCount: cap.activeCount,
+      availableSlots: cap.availableSlots, autoBalance: cap.autoBalance, canAccept: cap.canAccept,
+    }
+  })
 }
 
 /**
  * 加盟者の自動売買 受注可否を算出する（フェーズ2）。
  * 受注可 = 空き枠あり かつ 全体キャパに空き かつ 預かり金ロックなし。
+ * member を1回だけ取得（性能最適化A：従来の二重取得を排除）。
  */
 export async function getMemberAutoCapacity(memberId: string): Promise<MemberAutoCapacity> {
   const supabase = createServiceRoleClient()
-  const [settings, global] = await Promise.all([getAutoSettings(), getGlobalAutoCapacity()])
-
-  const { data: m } = await supabase
-    .from('members')
-    .select('auto_slots, capital_per_slot_yen')
-    .eq('id', memberId)
-    .maybeSingle<{ auto_slots: number; capital_per_slot_yen: number }>()
-  const ownedSlots = m?.auto_slots ?? 0
-  const capitalPerSlot = m?.capital_per_slot_yen ?? 4_000_000
-
+  const [settings, global, memberRes] = await Promise.all([
+    getAutoSettings(),
+    getGlobalAutoCapacity(),
+    supabase
+      .from('members')
+      .select('auto_slots, capital_per_slot_yen, grant_auto, grant_semi')
+      .eq('id', memberId)
+      .maybeSingle<{ auto_slots: number; capital_per_slot_yen: number; grant_auto: boolean; grant_semi: boolean }>(),
+  ])
+  const m = memberRes.data
+  const [balance, allocRes, dealCount] = await Promise.all([
+    getLedgerBalance(memberId),
+    supabase.from('member_budget_alloc').select('auto_allocated_yen, semi_allocated_yen').eq('member_id', memberId).maybeSingle<{ auto_allocated_yen: number; semi_allocated_yen: number }>(),
+    supabase.from('vehicle_deals').select('id', { count: 'exact', head: true }).eq('member_id', memberId).eq('flow', 'auto').in('status', ACTIVE_STAGES as unknown as string[]),
+  ])
   // フェーズ7：両フロー保有者は自動売買用の割当額で判定（単独フローは預かり残高全額）。
-  const budgets = await getFlowBudgets(memberId)
-  const autoBalance = budgets.autoBudget
-
-  const { count } = await supabase
-    .from('vehicle_deals')
-    .select('id', { count: 'exact', head: true })
-    .eq('member_id', memberId)
-    .eq('flow', 'auto')
-    .in('status', ACTIVE_STAGES as unknown as string[])
-  const activeCount = count ?? 0
-
-  const depositLocked = autoBalance < settings.minDeposit
-  const eff = effectiveSlots({ ownedSlots, capitalPerSlot, autoBalance, minDeposit: settings.minDeposit })
-  const availableSlots = Math.max(0, eff - activeCount)
-
-  let blockReason: string | undefined
-  if (depositLocked) blockReason = `預かり金が最低額（${settings.minDeposit.toLocaleString()}円）に満たないため受注できません`
-  else if (availableSlots <= 0) blockReason = `空き枠がありません（有効枠 ${eff} / 稼働 ${activeCount}）`
-  else if (global.available <= 0) blockReason = `全体の運用上限（${global.total}台）に達しています`
-
-  return {
-    ownedSlots, capitalPerSlot, autoBalance, minDeposit: settings.minDeposit,
-    depositLocked, effectiveSlots: eff, activeCount, availableSlots,
-    globalActive: global.active, globalTotal: global.total, globalAvailable: global.available,
-    canAccept: !blockReason, blockReason,
-  }
+  const budgets = deriveFlowBudgets({ grantAuto: m?.grant_auto ?? false, grantSemi: m?.grant_semi ?? false, balance, alloc: allocRes.data ?? null })
+  return computeMemberCapacity({
+    ownedSlots: m?.auto_slots ?? 0,
+    capitalPerSlot: m?.capital_per_slot_yen ?? 4_000_000,
+    autoBalance: budgets.autoBudget,
+    minDeposit: settings.minDeposit,
+    activeCount: dealCount.count ?? 0,
+    global,
+  })
 }

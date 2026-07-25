@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import { Repeat, Bot, Hand, Loader2 } from 'lucide-react'
 import { switchFlowAction } from '@/app/portal/onboarding/flow-actions'
 import type { FlowType } from '@/types/database'
@@ -10,6 +11,7 @@ import type { FlowType } from '@/types/database'
  * semi=半自動売買（手動操作）/ auto=自動売買。切替後はそのフローのマニュアルで進む。
  */
 export default function FlowSwitcher({ current, canSwitch }: { current: FlowType; canSwitch: boolean }) {
+  const router = useRouter()
   const [pending, start] = useTransition()
   const [error, setError] = useState('')
 
@@ -21,6 +23,7 @@ export default function FlowSwitcher({ current, canSwitch }: { current: FlowType
     start(async () => {
       const r = await switchFlowAction(flow)
       if (!r.ok) setError(r.error ?? '')
+      else router.refresh() // 選択を画面へ即時反映（⑤：切り替えても画面が変わらない対策）
     })
   }
 
