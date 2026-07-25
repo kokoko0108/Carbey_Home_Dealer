@@ -28,7 +28,8 @@ export const dynamic = 'force-dynamic'
 export default async function MemberDashboardPage() {
   const session = await requireMember()
   const member = await getMemberByUserId(session.userId)
-  const [onboarding, orders, announcements, flowInfo, dealSummary, activeDeals, invoices, salesReport] = await Promise.all([
+  // 独立した取得はすべて並列化（性能最適化A：直列awaitの排除）
+  const [onboarding, orders, announcements, flowInfo, dealSummary, activeDeals, invoices, salesReport, autoCapacity, flowBudgets] = await Promise.all([
     getOwnOnboarding(session.userId),
     listOwnOrders(session.userId),
     listAnnouncements(true, 5),
@@ -37,10 +38,10 @@ export default async function MemberDashboardPage() {
     listOwnActiveDeals(session.userId),
     member ? listInvoices(member.id) : Promise.resolve([]),
     member ? getMonthlyReport(member.id) : Promise.resolve(null),
+    getOwnAutoCapacity(session.userId), // 自動売買権限が無ければ null
+    getOwnFlowBudgets(session.userId), // 予算振り分け（両フロー保有者のみUI表示）
   ])
-  const autoCapacity = await getOwnAutoCapacity(session.userId) // 自動売買権限が無ければ null
-  const flowBudgets = await getOwnFlowBudgets(session.userId) // 予算振り分け（両フロー保有者のみUI表示）
-  const waitingPos = member && autoCapacity ? await getMemberWaitingPosition(member.id) : null // 受注待ちの順番（無ければ null）
+  const waitingPos = member && autoCapacity ? await getMemberWaitingPosition(member.id) : null // 受注待ちの順番（autoCapacity 依存）
   // 受注不可の理由が「全体上限のみ」（枠・資金はOK）なら予約導線を出す
   const canReserve = !!autoCapacity && !autoCapacity.canAccept && !autoCapacity.depositLocked && autoCapacity.availableSlots > 0 && autoCapacity.globalAvailable <= 0
 

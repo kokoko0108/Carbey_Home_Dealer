@@ -26,16 +26,17 @@ function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v))
 }
 
-/** 加盟者の各フロー予算を算出する。 */
-export async function getFlowBudgets(memberId: string): Promise<FlowBudgets> {
-  const supabase = createServiceRoleClient()
-  const [{ data: member }, balance, { data: alloc }] = await Promise.all([
-    supabase.from('members').select('grant_auto, grant_semi').eq('id', memberId).maybeSingle<{ grant_auto: boolean; grant_semi: boolean }>(),
-    getLedgerBalance(memberId),
-    supabase.from('member_budget_alloc').select('auto_allocated_yen, semi_allocated_yen').eq('member_id', memberId).maybeSingle<{ auto_allocated_yen: number; semi_allocated_yen: number }>(),
-  ])
-  const grantAuto = member?.grant_auto ?? false
-  const grantSemi = member?.grant_semi ?? false
+/**
+ * 各フロー予算を「取得済みデータ」から純粋に算出する（DBアクセスなし）。
+ * 個別取得（getFlowBudgets）とバルク取得（キャパ一覧）の両方から使い、ロジックを一元化する（性能最適化A）。
+ */
+export function deriveFlowBudgets(input: {
+  grantAuto: boolean
+  grantSemi: boolean
+  balance: number
+  alloc: { auto_allocated_yen: number; semi_allocated_yen: number } | null
+}): FlowBudgets {
+  const { grantAuto, grantSemi, balance, alloc } = input
   const isDual = grantAuto && grantSemi
 
   // 片方フローのみ：全額そのフロー
@@ -48,7 +49,6 @@ export async function getFlowBudgets(memberId: string): Promise<FlowBudgets> {
       semiAllocated: grantSemi ? balance : 0,
     }
   }
-
   // 両フロー・未設定：各フロー全額（従来どおり）
   if (!alloc) {
     return {
@@ -56,16 +56,30 @@ export async function getFlowBudgets(memberId: string): Promise<FlowBudgets> {
       autoBudget: balance, semiBudget: balance, autoAllocated: 0, semiAllocated: 0,
     }
   }
-
   // 両フロー・設定済み：auto をクランプ、残りを semi（合計＝現残高）
   const autoBudget = clamp(alloc.auto_allocated_yen, 0, balance)
-  const semiBudget = balance - autoBudget
   return {
     balance, grantAuto, grantSemi, isDual: true, hasAllocation: true,
-    autoBudget, semiBudget,
+    autoBudget, semiBudget: balance - autoBudget,
     autoAllocated: alloc.auto_allocated_yen,
     semiAllocated: alloc.semi_allocated_yen,
   }
+}
+
+/** 加盟者の各フロー予算を算出する。 */
+export async function getFlowBudgets(memberId: string): Promise<FlowBudgets> {
+  const supabase = createServiceRoleClient()
+  const [{ data: member }, balance, { data: alloc }] = await Promise.all([
+    supabase.from('members').select('grant_auto, grant_semi').eq('id', memberId).maybeSingle<{ grant_auto: boolean; grant_semi: boolean }>(),
+    getLedgerBalance(memberId),
+    supabase.from('member_budget_alloc').select('auto_allocated_yen, semi_allocated_yen').eq('member_id', memberId).maybeSingle<{ auto_allocated_yen: number; semi_allocated_yen: number }>(),
+  ])
+  return deriveFlowBudgets({
+    grantAuto: member?.grant_auto ?? false,
+    grantSemi: member?.grant_semi ?? false,
+    balance,
+    alloc: alloc ?? null,
+  })
 }
 
 /** ユーザーIDから自分のフロー予算を取得。会員未紐付けは null。 */

@@ -227,6 +227,29 @@ export async function listInvoicePayments(invoiceId: string): Promise<PaymentRow
   return (data ?? []) as unknown as PaymentRow[]
 }
 
+/**
+ * 複数請求の入金明細を1クエリでまとめて取得し、invoice_id ごとにグルーピングして返す（性能最適化A）。
+ * 会員詳細の「請求ごとに入金明細をN回問い合わせ」を1回に集約する。
+ */
+export async function listPaymentsByInvoice(invoiceIds: string[]): Promise<Map<string, PaymentRow[]>> {
+  const grouped = new Map<string, PaymentRow[]>()
+  if (invoiceIds.length === 0) return grouped
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from('payments')
+    .select('*')
+    .in('invoice_id', invoiceIds)
+    .order('payment_date', { ascending: false })
+  if (error) throw new Error(error.message)
+  for (const p of (data ?? []) as unknown as PaymentRow[]) {
+    if (!p.invoice_id) continue
+    const arr = grouped.get(p.invoice_id) ?? []
+    arr.push(p)
+    grouped.set(p.invoice_id, arr)
+  }
+  return grouped
+}
+
 /** 本部ダッシュボード用：遅延・未収の全体集計（PAY-04）。 */
 export type OverdueOverview = {
   overdueCount: number

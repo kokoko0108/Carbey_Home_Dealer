@@ -2,6 +2,7 @@ import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { getLedgerBalance, addLedgerEntry } from '@/lib/portal/ledger'
 import { completedMonths } from '@/lib/portal/deals'
 import { notifyMember } from '@/lib/portal/notifications'
+import { getSetting } from '@/lib/portal/settings'
 import type { MemberMgmtFeeRunRow } from '@/types/database'
 
 /**
@@ -17,18 +18,14 @@ import type { MemberMgmtFeeRunRow } from '@/types/database'
 export const MGMT_FEE_DEFAULT_UNIT = 100_000
 export const DEFAULT_TAX_PCT = 10
 
-/** 1枠あたり単価（system_settings。未設定は既定10万）。 */
+/** 1枠あたり単価（system_settings。未設定は既定10万）。リクエスト内キャッシュで往復削減。 */
 export async function getMgmtFeeUnit(): Promise<number> {
-  const supabase = createServiceRoleClient()
-  const { data } = await supabase.from('system_settings').select('value_int').eq('key', 'mgmt_fee_per_slot_yen').maybeSingle<{ value_int: number | null }>()
-  return data?.value_int ?? MGMT_FEE_DEFAULT_UNIT
+  return getSetting('mgmt_fee_per_slot_yen', MGMT_FEE_DEFAULT_UNIT)
 }
 
-/** 消費税率（％。system_settings。未設定は既定10）。本部が変更可。 */
+/** 消費税率（％。system_settings。未設定は既定10）。本部が変更可。リクエスト内キャッシュで往復削減。 */
 export async function getConsumptionTaxPct(): Promise<number> {
-  const supabase = createServiceRoleClient()
-  const { data } = await supabase.from('system_settings').select('value_int').eq('key', 'consumption_tax_pct').maybeSingle<{ value_int: number | null }>()
-  return data?.value_int ?? DEFAULT_TAX_PCT
+  return getSetting('consumption_tax_pct', DEFAULT_TAX_PCT)
 }
 
 /** 消費税額（税抜額 × 税率／％、円未満切り捨て）。 */

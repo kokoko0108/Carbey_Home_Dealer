@@ -1,6 +1,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { getLedgerBalance, addLedgerEntry } from '@/lib/portal/ledger'
 import { notifyMember, notifyAdmin } from '@/lib/portal/notifications'
+import { getSettingsMap } from '@/lib/portal/settings'
 import type { WithdrawalRequestRow, WithdrawalStatus, MemberStatus } from '@/types/database'
 
 /**
@@ -23,10 +24,7 @@ export type WithdrawalSettings = {
 const DEFAULTS: WithdrawalSettings = { feeYen: 5000, dueDays: 14, ticketsPerYear: 12, minYen: 0 }
 
 export async function getWithdrawalSettings(): Promise<WithdrawalSettings> {
-  const supabase = createServiceRoleClient()
-  const { data } = await supabase.from('system_settings').select('key, value_int')
-  const map = new Map<string, number | null>()
-  for (const r of (data ?? []) as { key: string; value_int: number | null }[]) map.set(r.key, r.value_int)
+  const map = await getSettingsMap()
   return {
     feeYen: map.get('withdrawal_fee_yen') ?? DEFAULTS.feeYen,
     dueDays: map.get('withdrawal_due_days') ?? DEFAULTS.dueDays,

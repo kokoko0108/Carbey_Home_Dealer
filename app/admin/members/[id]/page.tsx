@@ -11,7 +11,7 @@ import { getMemberCapabilities } from '@/lib/portal/capabilities'
 import { getLedgerBalance, listLedgerEntries } from '@/lib/portal/ledger'
 import { getMemberDealSummary, DEAL_STAGE_LABEL } from '@/lib/portal/deals'
 import { getSalesSummary } from '@/lib/portal/sales'
-import { listInvoices, listInvoicePayments, INVOICE_KIND_LABEL, INVOICE_STATUS_LABEL } from '@/lib/portal/billing'
+import { listInvoices, listPaymentsByInvoice, INVOICE_KIND_LABEL, INVOICE_STATUS_LABEL } from '@/lib/portal/billing'
 import { listConsentLog } from '@/lib/portal/agreements'
 import { MEMBER_STATUS_LABEL, yen } from '@/lib/portal/labels'
 import { Badge } from '@/components/ui/Badge'
@@ -62,8 +62,8 @@ export default async function MemberDetailPage({
     getMemberDealSummary(member.id), getSalesSummary(member.id),
     getMgmtFeePreview(member.id), listMgmtFeeRuns(member.id),
   ])
-  // 各請求の消込内訳（入金明細）
-  const invoicePayments = await Promise.all(invoices.map((inv) => listInvoicePayments(inv.id)))
+  // 各請求の消込内訳（入金明細）— 1クエリでまとめて取得（性能最適化A）
+  const invoicePayments = await listPaymentsByInvoice(invoices.map((inv) => inv.id))
   const billingTotals = invoices.reduce(
     (acc, inv) => {
       if (inv.status === 'cancelled' || inv.status === 'unbilled') return acc
@@ -719,7 +719,7 @@ export default async function MemberDetailPage({
           {invoices.length === 0 && (
             <p className="rounded-xl border border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-400">請求はまだありません。</p>
           )}
-          {invoices.map((inv, i) => {
+          {invoices.map((inv) => {
             const remaining = Math.max(0, inv.amount_yen - inv.paid_yen)
             const pct = inv.amount_yen > 0 ? Math.min(100, Math.round((inv.paid_yen / inv.amount_yen) * 100)) : 0
             const done = inv.status === 'paid' || inv.status === 'cancelled'
@@ -744,9 +744,9 @@ export default async function MemberDetailPage({
                 </div>
 
                 {/* 消込内訳（入金明細） */}
-                {invoicePayments[i].length > 0 && (
+                {(invoicePayments.get(inv.id) ?? []).length > 0 && (
                   <ul className="mt-2 space-y-1">
-                    {invoicePayments[i].map((p) => (
+                    {(invoicePayments.get(inv.id) ?? []).map((p) => (
                       <li key={p.id} className="flex items-center gap-2 text-xs text-slate-500">
                         <CheckCircle2 className="h-3.5 w-3.5 text-green-500" /> {p.payment_date} 入金 <span className="font-medium text-slate-700">{yen(p.amount_yen)}</span>
                         {p.note && <span className="text-slate-400">（{p.note}）</span>}
