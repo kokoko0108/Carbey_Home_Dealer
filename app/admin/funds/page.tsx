@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { Wallet, ChevronRight } from 'lucide-react'
 import { requireFeature } from '@/lib/auth/session'
 import { listAllMemberFunds } from '@/lib/portal/ledger'
+import { sumMonthlyMgmtFee } from '@/lib/portal/mgmt-fee'
 import { yen } from '@/lib/portal/labels'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -14,11 +15,11 @@ export const dynamic = 'force-dynamic'
  */
 export default async function AdminFundsPage() {
   await requireFeature('members')
-  const funds = await listAllMemberFunds()
+  const [funds, totalMgmtFee] = await Promise.all([listAllMemberFunds(), sumMonthlyMgmtFee()])
 
-  const totalBalance = funds.reduce((s, f) => s + f.balanceYen, 0)
-  const withBalance = funds.filter((f) => f.balanceYen > 0).length
-  const unpaid = funds.filter((f) => f.paymentStatus !== 'paid').length
+  const totalBalance = funds.reduce((s, f) => s + f.balanceYen, 0)                  // 仕入れ資金（預かり金）合計
+  const totalJoiningFee = funds.reduce((s, f) => s + (f.joiningFeeYen ?? 0), 0)      // 加盟金 合計
+  const grandTotal = totalBalance + totalJoiningFee + totalMgmtFee                   // 総合計
 
   return (
     <div className="space-y-6">
@@ -29,19 +30,23 @@ export default async function AdminFundsPage() {
         <p className="text-sm text-slate-500">全加盟店の仕入れ資金（預かり金）と加盟金の支払状況を一覧します。</p>
       </div>
 
-      {/* サマリ */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+      {/* サマリ（仕入れ資金・加盟金・月額管理手数料・総合計）レビュー⑮ */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-          <div className="text-sm text-slate-500">預かり金 合計</div>
+          <div className="text-sm text-slate-500">仕入れ資金（預かり金）</div>
           <div className="mt-1 text-2xl font-bold text-emerald-700">{yen(totalBalance)}</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-          <div className="text-sm text-slate-500">残高あり</div>
-          <div className="mt-1 text-2xl font-bold text-slate-900">{withBalance}<span className="ml-1 text-sm font-normal text-slate-400">店</span></div>
+          <div className="text-sm text-slate-500">加盟金 合計</div>
+          <div className="mt-1 text-2xl font-bold text-slate-900">{yen(totalJoiningFee)}</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-          <div className="text-sm text-slate-500">加盟金 未払い</div>
-          <div className="mt-1 text-2xl font-bold text-amber-600">{unpaid}<span className="ml-1 text-sm font-normal text-slate-400">店</span></div>
+          <div className="text-sm text-slate-500">月額管理手数料 合計<span className="ml-1 text-[11px] font-normal text-slate-400">（税抜／月）</span></div>
+          <div className="mt-1 text-2xl font-bold text-slate-900">{yen(totalMgmtFee)}</div>
+        </div>
+        <div className="rounded-2xl border border-brand-200 bg-brand-50/60 p-5 shadow-card">
+          <div className="text-sm font-medium text-brand-700">総合計</div>
+          <div className="mt-1 text-2xl font-bold text-brand-700">{yen(grandTotal)}</div>
         </div>
       </div>
 

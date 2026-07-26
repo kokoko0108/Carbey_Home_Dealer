@@ -26,6 +26,7 @@ export async function listMemberOptions(): Promise<{ id: string; label: string }
   const { data, error } = await supabase
     .from('members')
     .select('id, member_name, company_name')
+    .is('deleted_at', null)
     .order('member_name', { ascending: true })
   if (error) throw new Error(error.message)
   return (data ?? []).map((m: { id: string; member_name: string; company_name: string | null }) => ({

@@ -92,6 +92,12 @@ export default async function PlansPage({
                 <label className="mb-1 block text-xs text-slate-500">月額管理手数料 (円)</label>
                 <input name="mgmt_fee_monthly_yen" type="number" min="0" defaultValue={p.mgmt_fee_monthly_yen} className={field} />
               </div>
+              {/* #17 自動売買 1枠あたり上限額（運用資金）の既定 */}
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">自動売買 1枠あたり上限額 (円)</label>
+                <input name="default_capital_per_slot_yen" type="number" min="0" step="100000" defaultValue={p.default_capital_per_slot_yen} className={field} />
+                <p className="mt-1 text-[11px] text-slate-400">会員作成時の「1枠あたり運用資金」の既定値になります。</p>
+              </div>
               {/* ⑫ 利用できる運用方式：半自動・全自動をそれぞれ独立に割り当てる（両方可）。
                      plan_type はこの選択から自動導出するため、hidden で持ち回らない。 */}
               <div className="sm:col-span-4">

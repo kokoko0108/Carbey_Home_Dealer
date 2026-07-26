@@ -92,6 +92,11 @@ export default async function NewPlanPage({
             <label className={label}>月額管理手数料 (円)</label>
             <input name="mgmt_fee_monthly_yen" type="number" min="0" defaultValue="0" className={field} />
           </div>
+          {/* #17 自動売買 1枠あたり上限額（運用資金）の既定 */}
+          <div>
+            <label className={label}>自動売買 1枠あたり上限額 (円)</label>
+            <input name="default_capital_per_slot_yen" type="number" min="0" step="100000" defaultValue="4000000" className={field} />
+          </div>
         </div>
         <div>
           <label className={label}>説明</label>

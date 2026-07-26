@@ -1,4 +1,5 @@
 import { createServiceRoleClient } from '@/lib/supabase/admin'
+import { writeAuditLog } from '@/lib/portal/audit'
 import type { MemberRow, MemberInsert, PaymentRow, PlanRow } from '@/types/database'
 
 /**
@@ -12,6 +13,8 @@ export type MemberFilter = {
   q?: string // name/email/company 部分一致
   status?: string
   plan_id?: string
+  /** ソフト削除済みも含める（既定 false=有効な会員のみ）。 */
+  includeDeleted?: boolean
 }
 
 export async function listMembers(filter: MemberFilter = {}): Promise<MemberWithPlan[]> {
@@ -21,6 +24,7 @@ export async function listMembers(filter: MemberFilter = {}): Promise<MemberWith
     .select('*, plan:plans(code, name, default_auto_slots)')
     .order('created_at', { ascending: false })
 
+  if (!filter.includeDeleted) query = query.is('deleted_at', null) // 削除済みは一覧から除外（migration 048）
   if (filter.status) query = query.eq('status', filter.status)
   if (filter.plan_id) query = query.eq('plan_id', filter.plan_id)
   if (filter.q) {
@@ -31,6 +35,66 @@ export async function listMembers(filter: MemberFilter = {}): Promise<MemberWith
   const { data, error } = await query
   if (error) throw new Error(error.message)
   return (data ?? []) as unknown as MemberWithPlan[]
+}
+
+/** ソフト削除済みの会員一覧（復元用・削除日の新しい順）。 */
+export async function listDeletedMembers(): Promise<MemberWithPlan[]> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from('members')
+    .select('*, plan:plans(code, name, default_auto_slots)')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false })
+  if (error) throw new Error(error.message)
+  return (data ?? []) as unknown as MemberWithPlan[]
+}
+
+type Actor = { id: string | null; name: string | null }
+
+/** 会員をソフト削除（deleted_at をセット）。物理削除せず、一覧から除外する。監査ログを残す。 */
+export async function softDeleteMember(id: string, actor: Actor): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const { data: m } = await supabase
+    .from('members')
+    .select('company_name, member_name, deleted_at')
+    .eq('id', id)
+    .maybeSingle<{ company_name: string | null; member_name: string; deleted_at: string | null }>()
+  if (!m) throw new Error('会員が見つかりません')
+  if (m.deleted_at) throw new Error('すでに削除済みです')
+  const { error } = await supabase
+    .from('members')
+    .update({ deleted_at: new Date().toISOString(), deleted_by: actor.id } as never)
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+  await writeAuditLog({
+    actorId: actor.id, actorName: actor.name,
+    action: 'member.delete', targetType: 'member', targetId: id,
+    targetLabel: m.company_name ?? m.member_name,
+    detail: '会員登録を削除（ソフト削除・一覧非表示／入出金・同意などの記録は保全）',
+  })
+}
+
+/** ソフト削除した会員を復元（deleted_at を NULL に戻す）。監査ログを残す。 */
+export async function restoreMember(id: string, actor: Actor): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const { data: m } = await supabase
+    .from('members')
+    .select('company_name, member_name, deleted_at')
+    .eq('id', id)
+    .maybeSingle<{ company_name: string | null; member_name: string; deleted_at: string | null }>()
+  if (!m) throw new Error('会員が見つかりません')
+  if (!m.deleted_at) throw new Error('削除されていません')
+  const { error } = await supabase
+    .from('members')
+    .update({ deleted_at: null, deleted_by: null } as never)
+    .eq('id', id)
+  if (error) throw new Error(error.message)
+  await writeAuditLog({
+    actorId: actor.id, actorName: actor.name,
+    action: 'member.restore', targetType: 'member', targetId: id,
+    targetLabel: m.company_name ?? m.member_name,
+    detail: '会員登録を復元',
+  })
 }
 
 export async function getMember(id: string): Promise<MemberWithPlan | null> {

@@ -14,7 +14,7 @@ export async function getAdminStats(): Promise<AdminStats> {
   const supabase = createServiceRoleClient()
 
   const [membersRes, plansRes, paymentsRes, ordersRes, unreadRes] = await Promise.all([
-    supabase.from('members').select('status, plan_id'),
+    supabase.from('members').select('status, plan_id').is('deleted_at', null),
     supabase.from('plans').select('id, code, name, display_order').order('display_order'),
     supabase.from('payments').select('amount_yen, payment_date, status'),
     supabase.from('orders').select('status'),
@@ -79,6 +79,7 @@ export async function getRecentMembers(limit = 5): Promise<RecentMember[]> {
   const { data } = await supabase
     .from('members')
     .select('id, member_name, company_name, status, created_at')
+    .is('deleted_at', null)
     .order('created_at', { ascending: false })
     .limit(limit)
   return (data ?? []) as unknown as RecentMember[]
