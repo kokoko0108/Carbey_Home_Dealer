@@ -3893,6 +3893,21 @@ comment on column portal.vehicle_deals.prep_photographed is '商品化チェッ�
 comment on column portal.vehicle_deals.prep_listed_ready is '商品化チェックリスト：掲載準備';
 
 
+-- =====================================================================
+-- ## 047_withdrawal_ticket_model.sql
+-- 出金チケットモデルの改定（2026-07-26 クライアント確定 #8）
+-- 契約年ごとに無料枠1枚・初回無料・2回目以降はチケット5,000円を預かり金から償却（会員は満額受取）
+-- =====================================================================
+
+insert into portal.system_settings (key, value_int, note) values
+  ('withdrawal_ticket_price_yen', 5000, '出金チケット代（2回目以降・預かり金から償却）'),
+  ('withdrawal_free_per_year',       1, '契約年あたりの無料出金枠（初回無料）')
+on conflict (key) do nothing;
+
+update portal.system_settings set note = '【廃止】旧・出金手数料。withdrawal_ticket_price_yen へ移行' where key = 'withdrawal_fee_yen';
+update portal.system_settings set note = '【廃止】旧・年間チケット枚数。withdrawal_free_per_year へ移行' where key = 'withdrawal_tickets_per_year';
+
+
 -- ## 仕上げ: PostgREST スキーマキャッシュを再読込
 -- #####################################################################
 notify pgrst, 'reload schema';

@@ -6,6 +6,7 @@ import { useState } from 'react'
 import {
   Home, LayoutDashboard, Car, ClipboardList, LineChart, FileBarChart,
   MessageSquare, Bell, Settings, ScrollText, Menu, X, GraduationCap, Bot, Banknote,
+  ArrowLeftRight, Ship, Store, Shuffle,
 } from 'lucide-react'
 import Logo from '@/components/Logo'
 import { cn } from '@/lib/cn'
@@ -24,6 +25,11 @@ const ICONS = {
   settings: Settings,
   terms: ScrollText,
   training: GraduationCap,
+  // 拡張オプション（今後の拡張予定・レビュー⑨）
+  plan_change: ArrowLeftRight,
+  export: Ship,
+  agency: Store,
+  matching: Shuffle,
 } as const
 
 export type PortalNavEntry = {
@@ -32,6 +38,8 @@ export type PortalNavEntry = {
   icon: keyof typeof ICONS
   badge?: number
   soon?: boolean
+  /** 拡張オプションの状態バッジ（非クリック・今後の拡張予定）。 */
+  tag?: { text: string; tone: 'slate' | 'amber' | 'sky' }
 }
 
 export type PortalPlan = {
@@ -58,6 +66,19 @@ function NavLink({ entry, active }: { entry: PortalNavEntry; active: boolean }) 
       )}
     </>
   )
+  if (entry.tag) {
+    const toneCls = entry.tag.tone === 'amber'
+      ? 'border border-amber-500/30 bg-amber-500/15 text-amber-300'
+      : entry.tag.tone === 'sky'
+        ? 'border border-sky-500/30 bg-sky-500/15 text-sky-300'
+        : 'bg-carbon-700 text-slate-500'
+    return (
+      <div className="flex items-center justify-between rounded-xl px-3 py-2.5 text-[13px] font-medium text-slate-400" title="今後の拡張予定">
+        <span className="flex min-w-0 items-center gap-3"><Icon className="h-[18px] w-[18px] shrink-0 text-slate-500" /><span className="truncate">{entry.label}</span></span>
+        <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold', toneCls)}>{entry.tag.text}</span>
+      </div>
+    )
+  }
   if (entry.soon) {
     return (
       <div className="flex items-center justify-between rounded-xl px-3 py-2.5 text-[13px] font-medium text-slate-500" title="準備中（今後のアップデートで対応予定）">
@@ -81,7 +102,7 @@ function NavLink({ entry, active }: { entry: PortalNavEntry; active: boolean }) 
   )
 }
 
-export default function PortalSidebar({ nav, plan }: { nav: PortalNavEntry[]; plan: PortalPlan }) {
+export default function PortalSidebar({ nav, plan, expansion }: { nav: PortalNavEntry[]; plan: PortalPlan; expansion?: PortalNavEntry[] }) {
   const [open, setOpen] = useState(false)
   const pathname = usePathname()
 
@@ -101,9 +122,23 @@ export default function PortalSidebar({ nav, plan }: { nav: PortalNavEntry[]; pl
       {/* ナビ */}
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-2 scrollbar-dark">
         {nav.map((e) => {
-          const active = !e.soon && (pathname === e.href || pathname.startsWith(e.href + '/'))
+          const active = !e.soon && !e.tag && (pathname === e.href || pathname.startsWith(e.href + '/'))
           return <NavLink key={e.href + e.label} entry={e} active={active} />
         })}
+
+        {/* 拡張オプション（今後の拡張予定・レビュー⑨） */}
+        {expansion && expansion.length > 0 && (
+          <>
+            <div className="mb-1 mt-4 flex items-center gap-2 px-1 text-[10px] font-bold tracking-wide text-slate-500">
+              <span className="h-1 w-1 rounded-full bg-amber-500" />
+              拡張オプション
+              <span className="h-px flex-1 bg-carbon-700" />
+            </div>
+            {expansion.map((e) => (
+              <NavLink key={e.href + e.label} entry={e} active={false} />
+            ))}
+          </>
+        )}
       </nav>
 
       {/* プラン情報カード */}

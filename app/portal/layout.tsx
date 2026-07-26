@@ -18,9 +18,10 @@ export default async function PortalLayout({ children }: { children: React.React
     { href: '/portal/onboarding', label: 'オンボーディング', icon: 'onboarding' },
     { href: '/portal/dashboard', label: 'ダッシュボード', icon: 'dashboard' },
     { href: '/portal/vehicles', label: '車両管理', icon: 'vehicle', soon: true },
-    { href: '/portal/orders', label: 'オーダー管理', icon: 'order' },
     // 自動売買（フェーズ8）：権限を持つ加盟者のみ表示
     ...(member?.grant_auto ? [{ href: '/portal/auto', label: '自動売買', icon: 'auto' as const }] : []),
+    // 半自動売買（旧「オーダー管理」・仕入れオーダー）。自動売買の下に配置（レビュー⑭）
+    { href: '/portal/orders', label: '半自動売買', icon: 'order' },
     { href: '/portal/training', label: 'トレーニング', icon: 'training' },
     { href: '/portal/ai', label: 'AI分析・相場', icon: 'ai', soon: true },
     { href: '/portal/withdrawal', label: '出金申請', icon: 'withdrawal' },
@@ -29,6 +30,14 @@ export default async function PortalLayout({ children }: { children: React.React
     { href: '/portal/announcements', label: 'お知らせ', icon: 'announce', badge: unread },
     { href: '/portal/terms', label: '利用規約', icon: 'terms' },
     { href: '/portal/profile', label: '設定', icon: 'settings' },
+  ]
+
+  // 拡張オプション（今後の拡張予定・レビュー⑨）。非クリックの状態バッジ表示。
+  const expansion: PortalNavEntry[] = [
+    { href: '#', label: 'プラン変更', icon: 'plan_change', tag: { text: '提供予定', tone: 'sky' } },
+    { href: '#', label: 'フルオート輸出', icon: 'export', tag: { text: '開発中', tone: 'amber' } },
+    { href: '#', label: '代理店申請', icon: 'agency', tag: { text: '開発中', tone: 'amber' } },
+    { href: '#', label: 'マッチングオーダー', icon: 'matching', tag: { text: '開発中', tone: 'amber' } },
   ]
 
   const plan = {
@@ -42,10 +51,10 @@ export default async function PortalLayout({ children }: { children: React.React
 
   return (
     <div className="hud-grid min-h-screen bg-carbon-950 text-slate-200 on-dark">
-      <PortalSidebar nav={nav} plan={plan} />
+      <PortalSidebar nav={nav} plan={plan} expansion={expansion} />
       <div className="lg:pl-64">
         <PortalTopbar
-          userName={member?.member_name ?? session.name ?? session.email ?? 'ユーザー'}
+          userName={member?.company_name ?? member?.member_name ?? session.name ?? session.email ?? 'ユーザー'}
           memberCode={memberCode}
           userId={session.userId}
           unread={unread}

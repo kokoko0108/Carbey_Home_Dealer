@@ -6,14 +6,18 @@ import { requestWithdrawalAction, cancelWithdrawalAction } from '@/app/portal/wi
 
 const yen = (n: number) => `¥${Math.round(n).toLocaleString()}`
 
-/** 出金申請フォーム（申請可能なときのみ表示）。手数料を差し引いた振込額をその場で表示する。 */
-export function WithdrawalForm({ balance, feeYen, dueDays, minYen }: { balance: number; feeYen: number; dueDays: number; minYen: number }) {
+/**
+ * 出金申請フォーム（申請可能なときのみ表示）。
+ * 会員は申請額を満額受け取る。2回目以降はチケット代が「預かり金から別途」差し引かれる（振込額は減らない）。
+ */
+export function WithdrawalForm({ balance, ticketCharge, dueDays, minYen }: { balance: number; ticketCharge: number; dueDays: number; minYen: number }) {
   const [amount, setAmount] = useState<number>(0)
   const [pending, start] = useTransition()
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
-  const amt = Math.max(0, Math.min(amount || 0, balance))
-  const net = Math.max(0, amt - feeYen)
+  const maxAmount = Math.max(0, balance - ticketCharge) // チケット代も預かり金から引くため上限を控除
+  const amt = Math.max(0, Math.min(amount || 0, maxAmount))
+  const totalDeduct = amt + ticketCharge // 預かり金からの差引合計
 
   return (
     <div className="space-y-3">
@@ -23,7 +27,7 @@ export function WithdrawalForm({ balance, feeYen, dueDays, minYen }: { balance: 
           <input
             type="number"
             min={minYen || 0}
-            max={balance}
+            max={maxAmount}
             step={10000}
             value={amount || ''}
             onChange={(e) => setAmount(Number(e.target.value))}
@@ -32,7 +36,7 @@ export function WithdrawalForm({ balance, feeYen, dueDays, minYen }: { balance: 
           />
         </div>
         <button
-          disabled={pending || amt <= feeYen}
+          disabled={pending || amt <= 0}
           onClick={() => {
             setMsg(null)
             start(async () => {
@@ -48,11 +52,21 @@ export function WithdrawalForm({ balance, feeYen, dueDays, minYen }: { balance: 
       </div>
 
       <div className="rounded-lg border border-carbon-700 bg-carbon-800/50 p-3 text-xs">
-        <div className="flex justify-between py-0.5"><span className="text-slate-400">申請額（預かり金から差引）</span><span className="text-slate-200">{yen(amt)}</span></div>
-        <div className="flex justify-between py-0.5"><span className="text-slate-400">出金手数料</span><span className="text-amber-300">−{yen(feeYen)}</span></div>
-        <div className="mt-1 flex justify-between border-t border-carbon-700 pt-1.5"><span className="font-medium text-slate-300">お振込額</span><span className="text-base font-bold text-white">{yen(net)}</span></div>
+        <div className="flex justify-between py-0.5"><span className="font-medium text-slate-300">お振込額（満額）</span><span className="text-base font-bold text-white">{yen(amt)}</span></div>
+        {ticketCharge > 0 ? (
+          <div className="flex justify-between py-0.5"><span className="text-slate-400">チケット代（預かり金から）</span><span className="text-amber-300">−{yen(ticketCharge)}</span></div>
+        ) : (
+          <div className="flex justify-between py-0.5"><span className="text-slate-400">チケット代</span><span className="text-emerald-300">無料枠</span></div>
+        )}
+        <div className="mt-1 flex justify-between border-t border-carbon-700 pt-1.5"><span className="text-slate-400">預かり金からの差引合計</span><span className="font-semibold text-slate-200">{yen(totalDeduct)}</span></div>
       </div>
-      <p className="text-[11px] text-slate-500">申請後、本部の承認を経て <span className="text-slate-400">最大{dueDays}日以内</span> にお振込みします。{minYen > 0 && `最低出金額は ${yen(minYen)} です。`}</p>
+      <p className="text-[11px] text-slate-500">
+        申請後、本部の承認を経て <span className="text-slate-400">最大{dueDays}日以内</span> にお振込みします（申請額を満額お振込み）。
+        {ticketCharge > 0
+          ? ` 今年度の無料枠は使用済みのため、チケット代 ${yen(ticketCharge)} が預かり金から差し引かれます。`
+          : ' 今年度の無料枠を使用します（チケット代はかかりません）。'}
+        {minYen > 0 && ` 最低出金額は ${yen(minYen)} です。`}
+      </p>
       {msg && <p className={`text-xs ${msg.ok ? 'text-emerald-400' : 'text-rose-400'}`}>{msg.text}</p>}
     </div>
   )

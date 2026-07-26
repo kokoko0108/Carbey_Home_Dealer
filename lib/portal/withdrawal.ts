@@ -5,36 +5,43 @@ import { getSettingsMap } from '@/lib/portal/settings'
 import type { WithdrawalRequestRow, WithdrawalStatus, MemberStatus } from '@/types/database'
 
 /**
- * 運転資金の出金（引き出し／ウィズドロー）。クライアント確定ルール 2026-07-21〜22。
+ * 運転資金の出金（引き出し／ウィズドロー）。
+ * チケットモデルは 2026-07-26 クライアント確定（#8・migration 047）:
  *
  *   ・オーダー中／仕入れ中の案件があると申請不可（自動売買・半自動売買の両方）
  *   ・申請から入金までは最大14日以内（設定値 withdrawal_due_days）
- *   ・1年契約の中でチケット制（契約日起算の1年・設定値 withdrawal_tickets_per_year）
- *   ・出金手数料（設定値 withdrawal_fee_yen＝5,000円）を申請額から差し引いて振込
+ *   ・契約年ごとに無料枠 1枚（設定値 withdrawal_free_per_year）。初回は無料。
+ *   ・2回目以降は「チケット代 5,000円（設定値 withdrawal_ticket_price_yen）」を
+ *     "預かり金から"償却する。会員は申請額を満額受け取る（手数料を差し引かない）。
+ *   ・預かり金がチケット代を下回る場合は出金不可。
  *   ・未処理（申請中／承認済）の申請がある間は新規申請不可（多重申請の防止）
+ *
+ * withdrawal_requests の列の意味（migration 047 で流用）:
+ *   fee_yen … その申請のチケット代（無料=0／購入=ticketPriceYen）
+ *   net_yen … 実際の振込額（= amount_yen。満額）
  */
 
 export type WithdrawalSettings = {
-  feeYen: number
+  ticketPriceYen: number  // 2回目以降のチケット代（預かり金から償却）
   dueDays: number
-  ticketsPerYear: number
+  freePerYear: number     // 契約年あたりの無料枠
   minYen: number
 }
 
-const DEFAULTS: WithdrawalSettings = { feeYen: 5000, dueDays: 14, ticketsPerYear: 12, minYen: 0 }
+const DEFAULTS: WithdrawalSettings = { ticketPriceYen: 5000, dueDays: 14, freePerYear: 1, minYen: 0 }
 
 export async function getWithdrawalSettings(): Promise<WithdrawalSettings> {
   const map = await getSettingsMap()
   return {
-    feeYen: map.get('withdrawal_fee_yen') ?? DEFAULTS.feeYen,
+    ticketPriceYen: map.get('withdrawal_ticket_price_yen') ?? DEFAULTS.ticketPriceYen,
     dueDays: map.get('withdrawal_due_days') ?? DEFAULTS.dueDays,
-    ticketsPerYear: map.get('withdrawal_tickets_per_year') ?? DEFAULTS.ticketsPerYear,
+    freePerYear: map.get('withdrawal_free_per_year') ?? DEFAULTS.freePerYear,
     minYen: map.get('withdrawal_min_yen') ?? DEFAULTS.minYen,
   }
 }
 
 export async function setWithdrawalSetting(
-  key: 'withdrawal_fee_yen' | 'withdrawal_due_days' | 'withdrawal_tickets_per_year' | 'withdrawal_min_yen',
+  key: 'withdrawal_ticket_price_yen' | 'withdrawal_due_days' | 'withdrawal_free_per_year' | 'withdrawal_min_yen',
   value: number,
 ): Promise<void> {
   const supabase = createServiceRoleClient()
@@ -62,13 +69,15 @@ export type WithdrawalEligibility = {
   canRequest: boolean
   reasons: string[]           // 申請できない理由（複数）
   balance: number             // 預かり金残高
-  availableAmount: number     // 申請可能な上限額
-  feeYen: number
+  availableAmount: number     // 申請可能な上限額（チケット代を差し引いた残り）
+  ticketPriceYen: number      // 2回目以降のチケット代
   dueDays: number
   minYen: number
-  ticketsPerYear: number
-  ticketsUsed: number
-  ticketsLeft: number
+  freePerYear: number         // 契約年あたりの無料枠
+  freeUsedThisYear: number    // 今年度に使った無料枠
+  freeLeftThisYear: number    // 今年度の無料枠残
+  nextIsFree: boolean         // 次の申請が無料枠で行えるか
+  ticketChargeForNext: number // 次の申請に発生するチケット代（0 or ticketPriceYen）
   yearStart: string | null
   blockingOrders: number      // オーダー中の件数
   blockingDeals: number       // 仕入れ中（オーダー含む）の件数
@@ -113,9 +122,9 @@ export async function getWithdrawalEligibility(memberId: string): Promise<Withdr
     .limit(1)
     .maybeSingle<WithdrawalRequestRow>()
 
-  // チケット消費数（契約年度内の 申請中／承認済／振込完了）
+  // 今年度の出金回数（契約年度内の 申請中／承認済／振込完了）。無料枠の消費数に相当。
   const yearStart = contractYearStart(m?.contract_date ?? null, m?.registration_date ?? null)
-  let ticketsUsed = 0
+  let usedThisYear = 0
   if (yearStart) {
     const { count } = await supabase
       .from('withdrawal_requests')
@@ -123,9 +132,14 @@ export async function getWithdrawalEligibility(memberId: string): Promise<Withdr
       .eq('member_id', memberId)
       .in('status', ['requested', 'approved', 'paid'])
       .gte('requested_at', yearStart)
-    ticketsUsed = count ?? 0
+    usedThisYear = count ?? 0
   }
-  const ticketsLeft = Math.max(0, s.ticketsPerYear - ticketsUsed)
+  const freeUsedThisYear = Math.min(usedThisYear, s.freePerYear)
+  const freeLeftThisYear = Math.max(0, s.freePerYear - usedThisYear)
+  const nextIsFree = usedThisYear < s.freePerYear
+  const ticketChargeForNext = nextIsFree ? 0 : s.ticketPriceYen
+  // チケット代も預かり金から引くため、申請できる上限は残高からチケット代を差し引いた額
+  const availableAmount = Math.max(0, balance - ticketChargeForNext)
 
   const blockingOrders = orderCount ?? 0
   const blockingDeals = dealCount ?? 0
@@ -137,16 +151,18 @@ export async function getWithdrawalEligibility(memberId: string): Promise<Withdr
   if (blockingOrders > 0) reasons.push(`オーダー中の案件が${blockingOrders}件あります（完了後に申請できます）`)
   if (blockingDeals > 0) reasons.push(`仕入れ中の案件が${blockingDeals}件あります（完了後に申請できます）`)
   if (pending) reasons.push('未処理の出金申請があります（1件ずつのお手続きとなります）')
-  if (ticketsLeft <= 0) reasons.push(`今年度の出金回数の上限に達しています（${s.ticketsPerYear}回／年）`)
   if (!bankRegistered) reasons.push('振込先口座が未登録です（本部までご連絡ください）')
-  if (balance <= s.feeYen) reasons.push(`預かり金が出金手数料（${s.feeYen.toLocaleString()}円）を上回っていません`)
+  if (ticketChargeForNext > 0 && balance < s.ticketPriceYen) {
+    reasons.push(`預かり金がチケット代（${s.ticketPriceYen.toLocaleString()}円）を下回っています`)
+  } else if (availableAmount <= 0) {
+    reasons.push('出金可能な残高がありません')
+  }
 
   return {
     canRequest: reasons.length === 0,
-    reasons, balance,
-    availableAmount: Math.max(0, balance),
-    feeYen: s.feeYen, dueDays: s.dueDays, minYen: s.minYen, ticketsPerYear: s.ticketsPerYear,
-    ticketsUsed, ticketsLeft, yearStart,
+    reasons, balance, availableAmount,
+    ticketPriceYen: s.ticketPriceYen, dueDays: s.dueDays, minYen: s.minYen, freePerYear: s.freePerYear,
+    freeUsedThisYear, freeLeftThisYear, nextIsFree, ticketChargeForNext, yearStart,
     blockingOrders, blockingDeals, pendingRequest: pending ?? null, bankRegistered,
   }
 }
@@ -166,10 +182,14 @@ export async function requestWithdrawal(memberId: string, amountYen: number): Pr
   if (!e.canRequest) throw new Error(e.reasons[0] ?? '現在は出金申請できません。')
 
   const amount = Math.round(amountYen)
+  const ticketCharge = e.ticketChargeForNext
   if (!amount || amount <= 0) throw new Error('出金額を入力してください。')
   if (e.minYen > 0 && amount < e.minYen) throw new Error(`最低出金額は ${e.minYen.toLocaleString()}円 です。`)
-  if (amount > e.balance) throw new Error(`預かり金残高（${e.balance.toLocaleString()}円）を超える金額は申請できません。`)
-  if (amount <= e.feeYen) throw new Error(`出金手数料（${e.feeYen.toLocaleString()}円）を上回る金額を入力してください。`)
+  // 会員は満額受取。チケット代も預かり金から引くため、合計が残高を超えないこと。
+  if (amount + ticketCharge > e.balance) {
+    const tail = ticketCharge > 0 ? `とチケット代（${ticketCharge.toLocaleString()}円）` : ''
+    throw new Error(`預かり金残高（${e.balance.toLocaleString()}円）では、この金額${tail}を差し引けません。`)
+  }
 
   const { data: m } = await supabase
     .from('members')
@@ -184,8 +204,8 @@ export async function requestWithdrawal(memberId: string, amountYen: number): Pr
     member_id: memberId,
     status: 'requested',
     amount_yen: amount,
-    fee_yen: e.feeYen,
-    net_yen: amount - e.feeYen,
+    fee_yen: ticketCharge, // チケット代（無料枠=0／購入=ticketPriceYen）
+    net_yen: amount,       // 満額振込（手数料は差し引かない）
     bank_name: m?.bank_name ?? null,
     bank_branch: m?.bank_branch ?? null,
     bank_account_type: m?.bank_account_type ?? null,
@@ -195,7 +215,8 @@ export async function requestWithdrawal(memberId: string, amountYen: number): Pr
   } as never)
   if (error) throw new Error(error.message)
 
-  await notifyAdmin('withdrawal', '出金申請が届きました', `${m?.member_name ?? ''} 様より ${amount.toLocaleString()}円の出金申請がありました。`)
+  const ticketNote = ticketCharge > 0 ? `（チケット代 ${ticketCharge.toLocaleString()}円）` : '（無料枠）'
+  await notifyAdmin('withdrawal', '出金申請が届きました', `${m?.member_name ?? ''} 様より ${amount.toLocaleString()}円の出金申請がありました${ticketNote}。`)
 }
 
 /** 申請を承認する（本部）。振込待ちになる。 */
@@ -221,8 +242,9 @@ export async function rejectWithdrawal(id: string, by: string | null, reason: st
 }
 
 /**
- * 振込完了を記録する（本部）。預かり金台帳から申請額を減算する。
- * 台帳から引くのは amount_yen（＝振込額 net_yen ＋ 手数料 fee_yen）。
+ * 振込完了を記録する（本部）。預かり金台帳から「振込額（満額）＋チケット代」を減算する。
+ * 会員は net_yen（= amount_yen・満額）を受け取り、チケット代 fee_yen は本部の徴収分として
+ * 同時に預かり金から差し引く（合計 amount_yen ＋ fee_yen）。
  */
 export async function markWithdrawalPaid(id: string, by: string | null): Promise<void> {
   const supabase = createServiceRoleClient()
@@ -230,19 +252,23 @@ export async function markWithdrawalPaid(id: string, by: string | null): Promise
   if (!r) throw new Error('申請が見つかりません')
   if (r.status !== 'approved') throw new Error('承認済みの出金のみ振込完了にできます。')
 
+  const totalDeduct = r.amount_yen + r.fee_yen // 出金（満額）＋チケット代
   const balance = await getLedgerBalance(r.member_id)
-  if (balance < r.amount_yen) throw new Error(`預かり金残高（${balance.toLocaleString()}円）が申請額を下回っています。`)
+  if (balance < totalDeduct) throw new Error(`預かり金残高（${balance.toLocaleString()}円）が出金額＋チケット代（${totalDeduct.toLocaleString()}円）を下回っています。`)
 
   await addLedgerEntry({
     memberId: r.member_id,
     kind: 'withdraw',
-    amount: r.amount_yen,
-    note: `出金（振込 ${r.net_yen.toLocaleString()}円／手数料 ${r.fee_yen.toLocaleString()}円）`,
+    amount: totalDeduct,
+    note: r.fee_yen > 0
+      ? `出金 ${r.amount_yen.toLocaleString()}円／チケット代 ${r.fee_yen.toLocaleString()}円`
+      : `出金 ${r.amount_yen.toLocaleString()}円（無料枠）`,
     createdBy: by,
   })
   const { error } = await supabase.from('withdrawal_requests').update({ status: 'paid', paid_at: new Date().toISOString(), paid_by: by } as never).eq('id', id)
   if (error) throw new Error(error.message)
-  await notifyMember(r.member_id, 'withdrawal', '出金の振込が完了しました', `振込額 ${r.net_yen.toLocaleString()}円（手数料 ${r.fee_yen.toLocaleString()}円）。預かり金から ${r.amount_yen.toLocaleString()}円を差し引きました。`)
+  const feeNote = r.fee_yen > 0 ? `／チケット代 ${r.fee_yen.toLocaleString()}円` : ''
+  await notifyMember(r.member_id, 'withdrawal', '出金の振込が完了しました', `振込額 ${r.net_yen.toLocaleString()}円${feeNote}。預かり金から ${totalDeduct.toLocaleString()}円を差し引きました。`)
 }
 
 /** 加盟店が自分の申請を取り消す（承認前のみ）。 */
@@ -280,7 +306,7 @@ export async function listWithdrawals(memberId: string): Promise<WithdrawalReque
 
 /** 振込用CSV（承認済み＝振込待ちの一覧）。Excel で開けるよう BOM 付き。 */
 export function buildWithdrawalCsv(rows: WithdrawalWithMember[]): string {
-  const head = ['申請日', '加盟店名', '金融機関', '支店', '種別', '口座番号', '口座名義', '振込額', '手数料', '申請額', '入金期限']
+  const head = ['申請日', '加盟店名', '金融機関', '支店', '種別', '口座番号', '口座名義', '振込額', 'チケット代', '申請額', '入金期限']
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`
   const lines = rows.map((r) => [
     r.requested_at?.slice(0, 10) ?? '',
