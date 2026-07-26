@@ -79,6 +79,11 @@ export default async function PlansPage({
                 <label className="mb-1 block text-xs text-slate-500">加盟金 (円)</label>
                 <input name="joining_fee_yen" type="number" min="0" defaultValue={p.joining_fee_yen} className={field} />
               </div>
+              {/* #20 ロイヤリティ料率 */}
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">ロイヤリティ (%)</label>
+                <input name="royalty_pct" type="number" min="0" step="0.1" defaultValue={p.royalty_pct} className={field} />
+              </div>
               <div>
                 <label className="mb-1 block text-xs text-slate-500">表示順</label>
                 <input name="display_order" type="number" defaultValue={p.display_order} className={field} />
@@ -91,6 +96,7 @@ export default async function PlansPage({
               <div>
                 <label className="mb-1 block text-xs text-slate-500">月額管理手数料 (円)</label>
                 <input name="mgmt_fee_monthly_yen" type="number" min="0" defaultValue={p.mgmt_fee_monthly_yen} className={field} />
+                <p className="mt-1 text-[11px] text-amber-600">※実際の請求は「(保有枠数−1)×1枠単価」で自動計算されます（この欄は参考値）。</p>
               </div>
               {/* #17 自動売買 1枠あたり上限額（運用資金）の既定 */}
               <div>
@@ -114,6 +120,21 @@ export default async function PlansPage({
                   <span className="text-xs text-slate-400">※両方に割り当てると、加盟店はどちらも利用でき、フローを切り替えられます</span>
                 </div>
               </div>
+              {/* #18 左メニューの拡張機能をプラン単位で表示制御 */}
+              <div className="sm:col-span-4">
+                <label className="mb-1 block text-xs text-slate-500">加盟店メニューに表示する機能</label>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                    <input type="checkbox" name="feature_ai" defaultChecked={p.feature_ai} className="h-4 w-4 rounded border-slate-300 text-brand-500" />
+                    AI分析・相場
+                  </label>
+                  <label className="flex items-center gap-1.5 text-sm text-slate-700">
+                    <input type="checkbox" name="feature_crm" defaultChecked={p.feature_crm} className="h-4 w-4 rounded border-slate-300 text-brand-500" />
+                    CRM（顧客管理）
+                  </label>
+                  <span className="text-xs text-slate-400">※チェックを外すと、このプランの加盟店の左メニューから非表示になります</span>
+                </div>
+              </div>
               <div className="sm:col-span-3">
                 <label className="mb-1 block text-xs text-slate-500">説明</label>
                 <input name="description" defaultValue={p.description ?? ''} className={field} />
@@ -124,7 +145,7 @@ export default async function PlansPage({
               </div>
             </div>
             <div className="mt-3 flex items-center justify-between">
-              <span className="text-xs text-slate-400">月額 {yen(p.monthly_fee_yen)} / 加盟金 {yen(p.joining_fee_yen)}</span>
+              <span className="text-xs text-slate-400">月額 {yen(p.monthly_fee_yen)} / 加盟金 {yen(p.joining_fee_yen)} / ロイヤリティ {p.royalty_pct}%</span>
               <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50">保存</button>
             </div>
           </form>

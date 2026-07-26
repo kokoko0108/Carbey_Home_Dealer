@@ -6,7 +6,7 @@ import { useState } from 'react'
 import {
   Home, LayoutDashboard, Car, ClipboardList, LineChart, FileBarChart,
   MessageSquare, Bell, Settings, ScrollText, Menu, X, GraduationCap, Bot, Banknote,
-  ArrowLeftRight, Ship, Store, Shuffle,
+  ArrowLeftRight, Ship, Store, Shuffle, Contact,
 } from 'lucide-react'
 import Logo from '@/components/Logo'
 import { cn } from '@/lib/cn'
@@ -19,6 +19,7 @@ const ICONS = {
   auto: Bot,
   withdrawal: Banknote,
   ai: LineChart,
+  crm: Contact,
   report: FileBarChart,
   chat: MessageSquare,
   announce: Bell,

@@ -3948,6 +3948,50 @@ alter table portal.plans add column if not exists default_capital_per_slot_yen i
 comment on column portal.plans.default_capital_per_slot_yen is '自動売買 1枠あたり上限額（運用資金）の既定。会員作成時に capital_per_slot_yen の初期値として使う（#17）';
 
 
+-- =====================================================================
+-- ## 050_plan_feature_gating_member_crm.sql
+-- プラン別の機能表示制御（#18）＋ 加盟店が自分のCRMにアクセスできるRLS（#19）。
+-- =====================================================================
+
+alter table portal.plans add column if not exists feature_ai  boolean not null default true;
+alter table portal.plans add column if not exists feature_crm boolean not null default true;
+comment on column portal.plans.feature_ai  is '加盟店の左メニューに「AI分析・相場」を表示するか（#18）';
+comment on column portal.plans.feature_crm is '加盟店の左メニューに「CRM（顧客管理）」を表示するか（#18/#19）';
+
+drop policy if exists portal_crm_customers_member on portal.crm_customers;
+create policy portal_crm_customers_member on portal.crm_customers
+  for all using (member_id = portal.current_member_id(auth.uid()))
+  with check (member_id = portal.current_member_id(auth.uid()));
+
+drop policy if exists portal_crm_purchases_member on portal.crm_purchases;
+create policy portal_crm_purchases_member on portal.crm_purchases
+  for all using (exists (select 1 from portal.crm_customers c where c.id = customer_id and c.member_id = portal.current_member_id(auth.uid())))
+  with check (exists (select 1 from portal.crm_customers c where c.id = customer_id and c.member_id = portal.current_member_id(auth.uid())));
+
+drop policy if exists portal_crm_deals_member on portal.crm_deals;
+create policy portal_crm_deals_member on portal.crm_deals
+  for all using (exists (select 1 from portal.crm_customers c where c.id = customer_id and c.member_id = portal.current_member_id(auth.uid())))
+  with check (exists (select 1 from portal.crm_customers c where c.id = customer_id and c.member_id = portal.current_member_id(auth.uid())));
+
+drop policy if exists portal_crm_deal_notes_member on portal.crm_deal_notes;
+create policy portal_crm_deal_notes_member on portal.crm_deal_notes
+  for all using (exists (
+    select 1 from portal.crm_deals d join portal.crm_customers c on c.id = d.customer_id
+    where d.id = deal_id and c.member_id = portal.current_member_id(auth.uid())))
+  with check (exists (
+    select 1 from portal.crm_deals d join portal.crm_customers c on c.id = d.customer_id
+    where d.id = deal_id and c.member_id = portal.current_member_id(auth.uid())));
+
+
+-- =====================================================================
+-- ## 051_plan_royalty_pct.sql
+-- プランに「ロイヤリティ (%)」項目を追加（#20）。
+-- =====================================================================
+
+alter table portal.plans add column if not exists royalty_pct numeric(5,2) not null default 0;
+comment on column portal.plans.royalty_pct is 'ロイヤリティ料率（％）。プランごとに設定（#20）';
+
+
 -- ## 仕上げ: PostgREST スキーマキャッシュを再読込
 -- #####################################################################
 notify pgrst, 'reload schema';
