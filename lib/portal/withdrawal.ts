@@ -271,6 +271,21 @@ export async function markWithdrawalPaid(id: string, by: string | null): Promise
   await notifyMember(r.member_id, 'withdrawal', '出金の振込が完了しました', `振込額 ${r.net_yen.toLocaleString()}円${feeNote}。預かり金から ${totalDeduct.toLocaleString()}円を差し引きました。`)
 }
 
+/**
+ * 本部が出金申請を取り消す（#22）。振込完了前（申請中／承認済み）なら取消可能。
+ * approved でも台帳減算は markPaid 時のため、取消で預かり金を戻す処理は不要。
+ */
+export async function adminCancelWithdrawal(id: string, by: string | null): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const { data: r } = await supabase.from('withdrawal_requests').select('member_id, status').eq('id', id).maybeSingle<{ member_id: string; status: WithdrawalStatus }>()
+  if (!r) throw new Error('申請が見つかりません')
+  if (r.status === 'paid') throw new Error('振込完了済みの申請は取り消せません。')
+  if (r.status !== 'requested' && r.status !== 'approved') throw new Error('申請中／承認済みの出金のみ取り消せます。')
+  const { error } = await supabase.from('withdrawal_requests').update({ status: 'cancelled', approved_by: by } as never).eq('id', id)
+  if (error) throw new Error(error.message)
+  await notifyMember(r.member_id, 'withdrawal', '出金申請が取り消されました', '本部により出金申請が取り消されました。ご不明点は本部までお問い合わせください。')
+}
+
 /** 加盟店が自分の申請を取り消す（承認前のみ）。 */
 export async function cancelWithdrawal(id: string, memberId: string): Promise<void> {
   const supabase = createServiceRoleClient()

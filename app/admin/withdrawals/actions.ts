@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireFeature } from '@/lib/auth/session'
-import { approveWithdrawal, rejectWithdrawal, markWithdrawalPaid } from '@/lib/portal/withdrawal'
+import { approveWithdrawal, rejectWithdrawal, markWithdrawalPaid, adminCancelWithdrawal } from '@/lib/portal/withdrawal'
 
 function back(msg?: string, error?: string) {
   const q = error ? `?error=${encodeURIComponent(error)}` : msg ? `?msg=${encodeURIComponent(msg)}` : ''
@@ -39,6 +39,21 @@ export async function rejectWithdrawalAction(formData: FormData) {
     back(undefined, e instanceof Error ? e.message : '却下に失敗しました')
   }
   back('出金申請を却下しました')
+}
+
+/** 出金申請を取り消す（#22・振込完了前＝申請中／承認済みのみ）。 */
+export async function cancelWithdrawalAdminAction(formData: FormData) {
+  const session = await requireFeature('members')
+  const id = String(formData.get('id') ?? '')
+  if (!id) return
+  try {
+    await adminCancelWithdrawal(id, session.userId)
+    revalidatePath('/admin/withdrawals')
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('NEXT_REDIRECT')) throw e
+    back(undefined, e instanceof Error ? e.message : '取消に失敗しました')
+  }
+  back('出金申請を取り消しました')
 }
 
 /** 振込完了を記録する（預かり金から減算）。 */

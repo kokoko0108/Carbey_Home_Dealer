@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { TrendingUp, Package, ChevronRight } from 'lucide-react'
 import { requireFeature } from '@/lib/auth/session'
-import { getSalesSummary, getMonthlySales, getSalesByMember, listSoldDeals } from '@/lib/portal/sales'
+import { getSalesSummary, getMonthlySales, getYearlySales, getSalesByMember, listSoldDeals } from '@/lib/portal/sales'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { LineChart } from '@/components/charts/MiniCharts'
@@ -9,11 +9,14 @@ import { yen } from '@/lib/portal/labels'
 
 export const dynamic = 'force-dynamic'
 
+const marginOf = (rev: number, profit: number) => (rev > 0 ? Math.round((profit / rev) * 1000) / 10 : 0)
+
 export default async function AdminSalesPage() {
   await requireFeature('reports')
-  const [summary, monthly, byMember, sold] = await Promise.all([
+  const [summary, monthly, yearly, byMember, sold] = await Promise.all([
     getSalesSummary(),
-    getMonthlySales({ months: 6 }),
+    getMonthlySales({ months: 12 }),
+    getYearlySales({ years: 3 }),
     getSalesByMember(),
     listSoldDeals(),
   ])
@@ -48,10 +51,10 @@ export default async function AdminSalesPage() {
           {hasData ? (
             <LineChart
               series={[
-                { name: '売上', data: monthly.map((m) => m.revenueYen), color: '#1d5cf0' },
-                { name: '粗利益', data: monthly.map((m) => m.profitYen), color: '#16a34a' },
+                { name: '売上', data: monthly.slice(-6).map((m) => m.revenueYen), color: '#1d5cf0' },
+                { name: '粗利益', data: monthly.slice(-6).map((m) => m.profitYen), color: '#16a34a' },
               ]}
-              labels={monthly.map((m) => m.label)}
+              labels={monthly.slice(-6).map((m) => m.label)}
               valueFormat={(v) => `${Math.round(v / 10000)}万`}
               unit="円"
             />
@@ -62,6 +65,71 @@ export default async function AdminSalesPage() {
           )}
         </CardBody>
       </Card>
+
+      {/* #21 月次・年次の集計表（全体） */}
+      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <Card>
+          <CardHeader title="月次集計（全体・直近12ヶ月）" />
+          <CardBody className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">月</th>
+                    <th className="px-4 py-2.5 text-right font-medium">台数</th>
+                    <th className="px-4 py-2.5 text-right font-medium">売上</th>
+                    <th className="px-4 py-2.5 text-right font-medium">粗利益</th>
+                    <th className="px-4 py-2.5 text-right font-medium">利益率</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {monthly.map((m) => (
+                    <tr key={m.ym} className="hover:bg-slate-50">
+                      <td className="px-4 py-2 text-slate-700">{m.ym}</td>
+                      <td className="px-4 py-2 text-right text-slate-600">{m.count}</td>
+                      <td className="px-4 py-2 text-right text-slate-700">{yen(m.revenueYen)}</td>
+                      <td className={`px-4 py-2 text-right font-medium ${m.profitYen >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{yen(m.profitYen)}</td>
+                      <td className="px-4 py-2 text-right text-slate-600">{marginOf(m.revenueYen, m.profitYen)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardBody>
+        </Card>
+
+        <Card>
+          <CardHeader title="年次集計（全体・直近3年）" />
+          <CardBody className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">年</th>
+                    <th className="px-4 py-2.5 text-right font-medium">台数</th>
+                    <th className="px-4 py-2.5 text-right font-medium">売上</th>
+                    <th className="px-4 py-2.5 text-right font-medium">原価</th>
+                    <th className="px-4 py-2.5 text-right font-medium">粗利益</th>
+                    <th className="px-4 py-2.5 text-right font-medium">利益率</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {yearly.map((y) => (
+                    <tr key={y.year} className="hover:bg-slate-50">
+                      <td className="px-4 py-2 text-slate-700">{y.label}</td>
+                      <td className="px-4 py-2 text-right text-slate-600">{y.count}</td>
+                      <td className="px-4 py-2 text-right text-slate-700">{yen(y.revenueYen)}</td>
+                      <td className="px-4 py-2 text-right text-slate-500">{yen(y.costYen)}</td>
+                      <td className={`px-4 py-2 text-right font-medium ${y.profitYen >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{yen(y.profitYen)}</td>
+                      <td className="px-4 py-2 text-right text-slate-600">{marginOf(y.revenueYen, y.profitYen)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardBody>
+        </Card>
+      </div>
 
       {/* 加盟店別の収益一覧（要件 REP-02） */}
       <Card>

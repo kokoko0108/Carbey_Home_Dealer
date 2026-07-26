@@ -94,6 +94,46 @@ export async function getMonthlySales(opts?: { memberId?: string; months?: numbe
   return buckets
 }
 
+export type YearlySales = {
+  year: number
+  label: string         // '2026年'
+  count: number
+  revenueYen: number
+  costYen: number
+  profitYen: number
+}
+
+/**
+ * 年別集計（直近 years 年・古い→新しい順）。#21 年次集計。
+ * anchor は基準日（既定は現在）。
+ */
+export async function getYearlySales(opts?: { memberId?: string; years?: number; anchor?: Date }): Promise<YearlySales[]> {
+  const years = opts?.years ?? 3
+  const anchor = opts?.anchor ?? new Date()
+  const deals = await listSold(opts?.memberId)
+
+  const buckets: YearlySales[] = []
+  const index = new Map<number, YearlySales>()
+  for (let i = years - 1; i >= 0; i--) {
+    const y = anchor.getFullYear() - i
+    const b: YearlySales = { year: y, label: `${y}年`, count: 0, revenueYen: 0, costYen: 0, profitYen: 0 }
+    buckets.push(b)
+    index.set(y, b)
+  }
+
+  for (const deal of deals) {
+    if (!deal.sold_at) continue
+    const y = Number(deal.sold_at.slice(0, 4))
+    const b = index.get(y)
+    if (!b) continue
+    b.count++
+    b.revenueYen += deal.sale_price_yen ?? 0
+    b.costYen += deal.cost_total_yen ?? 0
+    b.profitYen += deal.gross_profit_yen ?? 0
+  }
+  return buckets
+}
+
 /** 月次レポート（当月・累計）。加盟店レポート画面用（要件 5.7）。 */
 export type MonthlyReport = {
   ym: string

@@ -1,12 +1,14 @@
 import { TrendingUp, Package } from 'lucide-react'
 import { requireMember } from '@/lib/auth/session'
 import { getMemberByUserId } from '@/lib/portal/members'
-import { getSalesSummary, getMonthlySales, getMonthlyReport, listSoldDeals } from '@/lib/portal/sales'
+import { getSalesSummary, getMonthlySales, getYearlySales, getMonthlyReport, listSoldDeals } from '@/lib/portal/sales'
 import { DarkCard, DarkCardHeader, DarkCardBody, DarkStat } from '@/components/portal-dark/DarkUI'
 import { DarkLineChart } from '@/components/portal-dark/DarkCharts'
 import { yen } from '@/lib/portal/labels'
 
 export const dynamic = 'force-dynamic'
+
+const marginOf = (rev: number, profit: number) => (rev > 0 ? Math.round((profit / rev) * 1000) / 10 : 0)
 
 export default async function MemberReportsPage() {
   const session = await requireMember()
@@ -14,9 +16,10 @@ export default async function MemberReportsPage() {
   if (!member) {
     return <p className="text-sm text-slate-400">会員情報が見つかりません。</p>
   }
-  const [summary, monthly, report, sold] = await Promise.all([
+  const [summary, monthly, yearly, report, sold] = await Promise.all([
     getSalesSummary(member.id),
-    getMonthlySales({ memberId: member.id, months: 6 }),
+    getMonthlySales({ memberId: member.id, months: 12 }),
+    getYearlySales({ memberId: member.id, years: 3 }),
     getMonthlyReport(member.id),
     listSoldDeals(member.id),
   ])
@@ -47,8 +50,8 @@ export default async function MemberReportsPage() {
         <DarkCardBody>
           {hasData ? (
             <DarkLineChart
-              data={monthly.map((m) => m.profitYen)}
-              labels={monthly.map((m) => m.label)}
+              data={monthly.slice(-6).map((m) => m.profitYen)}
+              labels={monthly.slice(-6).map((m) => m.label)}
               valueFormat={(v) => `${Math.round(v / 10000)}万`}
             />
           ) : (
@@ -58,6 +61,71 @@ export default async function MemberReportsPage() {
           )}
         </DarkCardBody>
       </DarkCard>
+
+      {/* #21 月次・年次の集計表 */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
+        <DarkCard>
+          <DarkCardHeader title="月次集計（直近12ヶ月）" />
+          <DarkCardBody className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-carbon-700 bg-carbon-900/50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">月</th>
+                    <th className="px-4 py-2.5 text-right font-medium">台数</th>
+                    <th className="px-4 py-2.5 text-right font-medium">売上</th>
+                    <th className="px-4 py-2.5 text-right font-medium">粗利益</th>
+                    <th className="px-4 py-2.5 text-right font-medium">利益率</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-carbon-700">
+                  {monthly.map((m) => (
+                    <tr key={m.ym} className="hover:bg-white/5">
+                      <td className="px-4 py-2 text-slate-300">{m.ym}</td>
+                      <td className="px-4 py-2 text-right text-slate-400">{m.count}</td>
+                      <td className="px-4 py-2 text-right text-slate-300">{yen(m.revenueYen)}</td>
+                      <td className={`px-4 py-2 text-right font-medium ${m.profitYen >= 0 ? 'text-brand-300' : 'text-rose-400'}`}>{yen(m.profitYen)}</td>
+                      <td className="px-4 py-2 text-right text-slate-400">{marginOf(m.revenueYen, m.profitYen)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </DarkCardBody>
+        </DarkCard>
+
+        <DarkCard>
+          <DarkCardHeader title="年次集計（直近3年）" />
+          <DarkCardBody className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="border-b border-carbon-700 bg-carbon-900/50 text-left text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2.5 font-medium">年</th>
+                    <th className="px-4 py-2.5 text-right font-medium">台数</th>
+                    <th className="px-4 py-2.5 text-right font-medium">売上</th>
+                    <th className="px-4 py-2.5 text-right font-medium">原価</th>
+                    <th className="px-4 py-2.5 text-right font-medium">粗利益</th>
+                    <th className="px-4 py-2.5 text-right font-medium">利益率</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-carbon-700">
+                  {yearly.map((y) => (
+                    <tr key={y.year} className="hover:bg-white/5">
+                      <td className="px-4 py-2 text-slate-300">{y.label}</td>
+                      <td className="px-4 py-2 text-right text-slate-400">{y.count}</td>
+                      <td className="px-4 py-2 text-right text-slate-300">{yen(y.revenueYen)}</td>
+                      <td className="px-4 py-2 text-right text-slate-500">{yen(y.costYen)}</td>
+                      <td className={`px-4 py-2 text-right font-medium ${y.profitYen >= 0 ? 'text-brand-300' : 'text-rose-400'}`}>{yen(y.profitYen)}</td>
+                      <td className="px-4 py-2 text-right text-slate-400">{marginOf(y.revenueYen, y.profitYen)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </DarkCardBody>
+        </DarkCard>
+      </div>
 
       {/* 販売履歴 */}
       <DarkCard>
