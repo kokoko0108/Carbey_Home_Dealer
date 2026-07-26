@@ -6,7 +6,8 @@ import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { yen } from '@/lib/portal/labels'
 import type { WithdrawalStatus } from '@/types/database'
-import { approveWithdrawalAction, rejectWithdrawalAction, markPaidAction } from './actions'
+import { approveWithdrawalAction, rejectWithdrawalAction, markPaidAction, cancelWithdrawalAdminAction } from './actions'
+import { ConfirmSubmit } from '@/components/admin/ConfirmSubmit'
 
 export const dynamic = 'force-dynamic'
 
@@ -105,9 +106,12 @@ export default async function AdminWithdrawalsPage({ searchParams }: { searchPar
                         <>
                           <form action={approveWithdrawalAction}>
                             <input type="hidden" name="id" value={w.id} />
-                            <button className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700">
+                            <ConfirmSubmit
+                              message={`「${w.member?.company_name ?? w.member?.member_name ?? ''}」の出金申請（振込 ${yen(w.net_yen)}）を承認します。よろしいですか？（承認後は振込待ちになります）`}
+                              className="inline-flex items-center gap-1 rounded-lg bg-sky-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-sky-700"
+                            >
                               <Check className="h-3.5 w-3.5" /> 承認する
-                            </button>
+                            </ConfirmSubmit>
                           </form>
                           <form action={rejectWithdrawalAction} className="flex items-end gap-2">
                             <input type="hidden" name="id" value={w.id} />
@@ -121,11 +125,24 @@ export default async function AdminWithdrawalsPage({ searchParams }: { searchPar
                       {w.status === 'approved' && (
                         <form action={markPaidAction}>
                           <input type="hidden" name="id" value={w.id} />
-                          <button className="inline-flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700">
+                          <ConfirmSubmit
+                            message={`振込完了として記録し、預かり金から ${yen(w.amount_yen + w.fee_yen)} を差し引きます。よろしいですか？（この操作は元に戻せません）`}
+                            className="inline-flex items-center gap-1 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700"
+                          >
                             <Check className="h-3.5 w-3.5" /> 振込完了にする（預かり金から差引）
-                          </button>
+                          </ConfirmSubmit>
                         </form>
                       )}
+                      {/* #22 申請中／承認済みは取消可能（振込完了前・確認あり） */}
+                      <form action={cancelWithdrawalAdminAction}>
+                        <input type="hidden" name="id" value={w.id} />
+                        <ConfirmSubmit
+                          message="この出金申請を取り消します。よろしいですか？（振込は行われません）"
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50"
+                        >
+                          <X className="h-3.5 w-3.5" /> 取消
+                        </ConfirmSubmit>
+                      </form>
                     </div>
                   )}
                 </div>
