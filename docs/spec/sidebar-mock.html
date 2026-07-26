@@ -39,8 +39,10 @@
   /* 拡張オプション */
   .opt { color:#a8b3c4; }
   .opt .ic { color:#8a94a6; }
-  .badge-opt { background:rgba(245,158,11,.16); color:#fbbf24; font-size:9px; font-weight:700;
+  .badge-dev { background:rgba(245,158,11,.16); color:#fbbf24; font-size:9px; font-weight:700;
     padding:2px 7px; border-radius:5px; border:1px solid rgba(245,158,11,.3); white-space:nowrap; flex:0 0 auto; }
+  .badge-plan { background:rgba(56,189,248,.14); color:#7dd3fc; font-size:9px; font-weight:700;
+    padding:2px 7px; border-radius:5px; border:1px solid rgba(56,189,248,.3); white-space:nowrap; flex:0 0 auto; }
   .item .l { min-width:0; }
   .sec {
     display:flex; align-items:center; gap:8px; margin:14px 6px 4px; color:#64748b;
@@ -67,7 +69,8 @@
   .pill { display:inline-block; font-size:10px; font-weight:700; padding:3px 9px; border-radius:6px; }
   .pill.now { background:#f5362b; color:#fff; }
   .pill.soon { background:#2b2f38; color:#94a3b8; }
-  .pill.opt { background:rgba(245,158,11,.16); color:#fbbf24; border:1px solid rgba(245,158,11,.3); }
+  .pill.dev { background:rgba(245,158,11,.16); color:#fbbf24; border:1px solid rgba(245,158,11,.3); }
+  .pill.plan { background:rgba(56,189,248,.14); color:#7dd3fc; border:1px solid rgba(56,189,248,.3); }
   .lg .tt { font-size:12.5px; font-weight:700; color:#e2e8f0; }
   .lg .dd { font-size:11.5px; color:#8a94a6; line-height:1.5; margin-top:2px; }
 </style>
@@ -95,12 +98,12 @@
       <div class="item normal"><span class="l"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>チャット</span></div>
       <div class="item normal"><span class="l"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>お知らせ</span><span class="badge-num">3</span></div>
 
-      <!-- 拡張オプション -->
+      <!-- 拡張オプション（今後の拡張予定） -->
       <div class="sec"><span class="dot"></span>拡張オプション</div>
-      <div class="item opt"><span class="l"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12A10 10 0 1 1 12 2"/><path d="M22 2 12 12"/><path d="M16 2h6v6"/></svg>AI分析・相場</span><span class="badge-opt">＋オプション</span></div>
-      <div class="item opt"><span class="l"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>スタッフ管理</span><span class="badge-opt">＋オプション</span></div>
-      <div class="item opt"><span class="l"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>陸送費・特殊車</span><span class="badge-opt">＋オプション</span></div>
-      <div class="item opt"><span class="l"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 19.5v.5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7.5L20 8.5"/><path d="M14 2v6h6"/><path d="m10.42 12.61-3.5 3.5a1 1 0 0 0-.26.45l-.6 2.1a.5.5 0 0 0 .62.62l2.1-.6a1 1 0 0 0 .45-.26l3.5-3.5a1.42 1.42 0 0 0-2-2Z"/></svg>電子契約</span><span class="badge-opt">＋オプション</span></div>
+      <div class="item opt"><span class="l"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>プラン変更</span><span class="badge-plan">提供予定</span></div>
+      <div class="item opt"><span class="l"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10.189V14"/><path d="M12 2v3"/><path d="M19 13V7a2 2 0 0 0-2-2H7a2 2 0 0 0-2 2v6"/><path d="M19.38 20A11.6 11.6 0 0 0 21 14l-8.188-3.639a2 2 0 0 0-1.624 0L3 14a11.6 11.6 0 0 0 2.81 7.76"/><path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1s1.2 1 2.5 1c2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg>フルオート輸出</span><span class="badge-dev">開発中</span></div>
+      <div class="item opt"><span class="l"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></svg>代理店申請</span><span class="badge-dev">開発中</span></div>
+      <div class="item opt"><span class="l"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-5.9c-1.3 0-2.6-.7-3.3-1.8l-.5-.8"/><path d="m18 14 4 4-4 4"/><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 2-1.7 3.3-1.7H22"/></svg>マッチングオーダー</span><span class="badge-dev">開発中</span></div>
     </nav>
 
     <div class="plan">
@@ -114,11 +117,16 @@
 
   <div class="note">
     <h2>拡張オプションの表示</h2>
-    <div class="sub">左メニュー最下部に「拡張オプション」区画を追加。3種類の状態で表示します。</div>
+    <div class="sub">左メニュー最下部に「拡張オプション」区画を新設し、今後の拡張予定をあらかじめ可視化します。状態を色で区別します。</div>
     <div class="legend">
       <div class="lg"><span class="sw"><span class="pill now">現行</span></span><div><div class="tt">赤＝ご利用中の機能</div><div class="dd">現在お使いいただいているメニュー。クリックで各画面へ遷移します。</div></div></div>
       <div class="lg"><span class="sw"><span class="pill soon">準備中</span></span><div><div class="tt">灰＝今後の標準アップデート</div><div class="dd">標準機能として順次提供予定。追加費用なしで解放されます（例：車両管理）。</div></div></div>
-      <div class="lg"><span class="sw"><span class="pill opt">＋オプション</span></span><div><div class="tt">橙＝お申込みで利用可能な拡張機能</div><div class="dd">ご希望に応じて個別に開発・有効化する拡張メニュー。内容・費用・期間は個別お見積りのうえ、ご承認後に着手します。</div></div></div>
+      <div class="lg"><span class="sw"><span class="pill dev">開発中</span></span><div><div class="tt">橙＝現在開発中の拡張機能</div><div class="dd">フルオート輸出・代理店申請・マッチングオーダー。開発完了後、順次ご利用いただけます。</div></div></div>
+      <div class="lg"><span class="sw"><span class="pill plan">提供予定</span></span><div><div class="tt">青＝提供予定のメニュー</div><div class="dd">プラン変更など、今後追加を予定している機能です。</div></div></div>
+    </div>
+    <div style="margin-top:18px;padding:12px 14px;background:#0f1520;border:1px solid #1e293b;border-radius:10px;">
+      <div style="font-size:11px;color:#7dd3fc;font-weight:700;margin-bottom:4px;">今回のご指定（3〜5件推奨）</div>
+      <div style="font-size:11.5px;color:#94a3b8;line-height:1.6;">プラン変更／フルオート輸出※開発中／代理店申請※開発中／マッチングオーダー※開発中<br>の4件を表示しています。表示名・並び順・追加は随時調整できます。</div>
     </div>
   </div>
 </div>

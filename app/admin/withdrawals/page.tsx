@@ -38,7 +38,7 @@ export default async function AdminWithdrawalsPage({ searchParams }: { searchPar
             <Banknote className="h-5 w-5 text-brand-500" /> 出金申請の管理
           </h1>
           <p className="text-sm text-slate-500">
-            加盟店からの出金申請を承認し、振込用データを出力します。手数料 {yen(settings.feeYen)}／入金期限 最大{settings.dueDays}日／チケット {settings.ticketsPerYear}回・年
+            加盟店からの出金申請を承認し、振込用データを出力します。チケット代 {yen(settings.ticketPriceYen)}（2回目以降）／無料枠 {settings.freePerYear}枚・契約年／入金期限 最大{settings.dueDays}日
           </p>
         </div>
         <a
@@ -87,7 +87,7 @@ export default async function AdminWithdrawalsPage({ searchParams }: { searchPar
                     {w.due_date && w.status !== 'paid' && <span className="text-xs text-slate-500">入金期限 {w.due_date}</span>}
                     <span className="ml-auto text-sm text-slate-700">
                       振込 <span className="text-base font-bold text-slate-900">{yen(w.net_yen)}</span>
-                      <span className="ml-2 text-xs text-slate-400">申請 {yen(w.amount_yen)}／手数料 {yen(w.fee_yen)}</span>
+                      <span className="ml-2 text-xs text-slate-400">申請 {yen(w.amount_yen)}／チケット代 {yen(w.fee_yen)}</span>
                     </span>
                   </div>
 

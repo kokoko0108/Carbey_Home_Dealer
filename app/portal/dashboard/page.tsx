@@ -50,7 +50,7 @@ export default async function MemberDashboardPage() {
   const outstandingYen = openInvoices.reduce((s, inv) => s + Math.max(0, inv.amount_yen - inv.paid_yen), 0)
   const hasOverdue = openInvoices.some((inv) => inv.status === 'overdue')
 
-  const name = member?.member_name ?? session.name ?? 'ゲスト'
+  const name = member?.company_name ?? member?.member_name ?? session.name ?? 'ゲスト'
   const flow = flowInfo?.flow ?? null // 'auto' | 'semi' | null(プラン未割当)
   const fmtMan = (v: number) => `${Math.round(v / 10000)}万`
   const nextAction = onboarding ? getNextAction(onboarding) : null // ㉜ 次にやること
@@ -99,7 +99,7 @@ export default async function MemberDashboardPage() {
               <Package className="h-4 w-4 text-brand-400" /> 取引の進捗
             </h2>
             <Link href="/portal/orders" className="flex items-center gap-1 text-xs text-brand-400 hover:underline">
-              オーダー管理 <ChevronRight className="h-3 w-3" />
+              半自動売買 <ChevronRight className="h-3 w-3" />
             </Link>
           </div>
           {/* ステージ別 横軸 */}

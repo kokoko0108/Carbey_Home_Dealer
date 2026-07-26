@@ -38,12 +38,12 @@ export default async function WithdrawalPage() {
           <div className="mt-1 text-xl font-bold text-white">{yen(e.balance)}</div>
         </div>
         <div className="rounded-xl border border-carbon-700 bg-carbon-900/60 p-4">
-          <div className="flex items-center gap-1 text-[11px] text-slate-400"><Ticket className="h-3 w-3" /> 今年度の残回数</div>
-          <div className="mt-1 text-xl font-bold text-white">{e.ticketsLeft}<span className="ml-1 text-xs font-normal text-slate-400">/ {e.ticketsPerYear}回</span></div>
+          <div className="flex items-center gap-1 text-[11px] text-slate-400"><Ticket className="h-3 w-3" /> 今年度の無料枠</div>
+          <div className="mt-1 text-xl font-bold text-white">{e.freeLeftThisYear}<span className="ml-1 text-xs font-normal text-slate-400">/ {e.freePerYear}枚</span></div>
         </div>
         <div className="rounded-xl border border-carbon-700 bg-carbon-900/60 p-4">
-          <div className="text-[11px] text-slate-400">出金手数料</div>
-          <div className="mt-1 text-xl font-bold text-amber-300">{yen(e.feeYen)}</div>
+          <div className="text-[11px] text-slate-400">次回のチケット代</div>
+          <div className={`mt-1 text-xl font-bold ${e.nextIsFree ? 'text-emerald-300' : 'text-amber-300'}`}>{e.nextIsFree ? '無料' : yen(e.ticketPriceYen)}</div>
         </div>
         <div className="rounded-xl border border-carbon-700 bg-carbon-900/60 p-4">
           <div className="flex items-center gap-1 text-[11px] text-slate-400"><Clock className="h-3 w-3" /> 入金までの期限</div>
@@ -55,7 +55,7 @@ export default async function WithdrawalPage() {
       <div className="rounded-2xl border border-carbon-700 bg-carbon-900/60 p-5">
         <h2 className="mb-3 text-sm font-semibold text-white">出金の申請</h2>
         {e.canRequest ? (
-          <WithdrawalForm balance={e.balance} feeYen={e.feeYen} dueDays={e.dueDays} minYen={e.minYen} />
+          <WithdrawalForm balance={e.balance} ticketCharge={e.ticketChargeForNext} dueDays={e.dueDays} minYen={e.minYen} />
         ) : (
           <div className="space-y-2">
             <div className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
@@ -90,7 +90,7 @@ export default async function WithdrawalPage() {
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 text-[11px] text-slate-500">
                   <span>申請額 {yen(w.amount_yen)}</span>
-                  <span>手数料 {yen(w.fee_yen)}</span>
+                  {w.fee_yen > 0 ? <span>チケット代 {yen(w.fee_yen)}</span> : <span className="text-emerald-400">無料枠</span>}
                   {w.paid_at && <span className="text-emerald-400">振込完了 {new Date(w.paid_at).toLocaleDateString('ja-JP')}</span>}
                   {w.reject_reason && <span className="text-rose-400">却下理由：{w.reject_reason}</span>}
                   {w.status === 'requested' && <span className="ml-auto"><CancelWithdrawalButton id={w.id} /></span>}

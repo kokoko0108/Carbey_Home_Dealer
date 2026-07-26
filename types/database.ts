@@ -574,9 +574,9 @@ export type WithdrawalRequestRow = {
   id: string
   member_id: string
   status: WithdrawalStatus
-  amount_yen: number // 申請額（預かり金から減算する額）
-  fee_yen: number    // 出金手数料
-  net_yen: number    // 実際の振込額（= amount_yen − fee_yen）
+  amount_yen: number // 申請額（会員が受け取る額。無料枠なら預かり金から減算する主額）
+  fee_yen: number    // チケット代（無料枠=0／2回目以降=5,000）※migration 047 で意味変更
+  net_yen: number    // 実際の振込額（= amount_yen。満額）
   bank_name: string | null
   bank_branch: string | null
   bank_account_type: string | null

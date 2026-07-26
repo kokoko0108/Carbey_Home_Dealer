@@ -90,11 +90,11 @@ export default async function MembersPage({
               <TD>
                 <Link href={`/admin/members/${mem.id}`} className="flex items-center gap-3 group">
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
-                    {mem.member_name.charAt(0)}
+                    {(mem.company_name ?? mem.member_name).charAt(0)}
                   </span>
                   <span>
-                    <span className="font-medium text-slate-900 group-hover:text-brand-600">{mem.member_name}</span>
-                    {mem.company_name && <span className="block text-xs text-slate-500">{mem.company_name}</span>}
+                    <span className="font-medium text-slate-900 group-hover:text-brand-600">{mem.company_name ?? mem.member_name}</span>
+                    {mem.company_name && <span className="block text-xs text-slate-500">{mem.member_name}</span>}
                   </span>
                 </Link>
               </TD>
