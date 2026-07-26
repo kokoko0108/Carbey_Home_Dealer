@@ -3,7 +3,8 @@
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { requireFeature } from '@/lib/auth/session'
-import { createMember, updateMember, getMember, findMemberByEmail } from '@/lib/portal/members'
+import { createMember, updateMember, getMember, findMemberByEmail, softDeleteMember, restoreMember } from '@/lib/portal/members'
+import { getPlan } from '@/lib/portal/plans'
 import { notifyAdmin } from '@/lib/portal/notifications'
 import { issueMemberCredentials } from '@/lib/portal/invite'
 import type { MemberStatus, PaymentStatus } from '@/types/database'
@@ -42,6 +43,9 @@ export async function createMemberAction(formData: FormData) {
   const email = str(formData.get('email'))
   if (email && (await findMemberByEmail(email))) redirect('/admin/members/new?error=email_duplicate')
 
+  // #17 1枠あたり上限額：フォーム未入力ならプラン既定を適用（さらに未設定なら400万）
+  const plan = plan_id ? await getPlan(plan_id) : null
+
   const m = await createMember({
     member_name,
     company_name: str(formData.get('company_name')),
@@ -64,7 +68,7 @@ export async function createMemberAction(formData: FormData) {
     grant_auto,
     trading_override,
     auto_slots: Math.min(10, Math.max(0, num(formData.get('auto_slots')) ?? 0)),
-    capital_per_slot_yen: num(formData.get('capital_per_slot_yen')) ?? 4000000,
+    capital_per_slot_yen: num(formData.get('capital_per_slot_yen')) ?? plan?.default_capital_per_slot_yen ?? 4000000,
     joining_fee_yen: num(formData.get('joining_fee_yen')),
     monthly_fee_yen: num(formData.get('monthly_fee_yen')),
     working_capital_yen: num(formData.get('working_capital_yen')),
@@ -120,6 +124,9 @@ export async function updateMemberAction(formData: FormData) {
   const email = str(formData.get('email'))
   if (email && (await findMemberByEmail(email, id))) redirect(`/admin/members/${id}?error=email_duplicate`)
 
+  // #17 1枠あたり上限額：フォーム未入力ならプラン既定を適用（さらに未設定なら400万）
+  const plan = plan_id ? await getPlan(plan_id) : null
+
   await updateMember(id, {
     member_name: str(formData.get('member_name')) ?? undefined,
     company_name: str(formData.get('company_name')),
@@ -142,7 +149,7 @@ export async function updateMemberAction(formData: FormData) {
     grant_auto,
     trading_override,
     auto_slots: Math.min(10, Math.max(0, num(formData.get('auto_slots')) ?? 0)),
-    capital_per_slot_yen: num(formData.get('capital_per_slot_yen')) ?? 4000000,
+    capital_per_slot_yen: num(formData.get('capital_per_slot_yen')) ?? plan?.default_capital_per_slot_yen ?? 4000000,
     payment_status: (str(formData.get('payment_status')) ?? undefined) as PaymentStatus | undefined,
     joining_fee_yen: num(formData.get('joining_fee_yen')),
     monthly_fee_yen: num(formData.get('monthly_fee_yen')),
@@ -152,6 +159,42 @@ export async function updateMemberAction(formData: FormData) {
 
   revalidatePath(`/admin/members/${id}`)
   redirect(`/admin/members/${id}`)
+}
+
+/**
+ * 会員登録をソフト削除する（#11/#16・migration 048）。
+ * 物理削除せず deleted_at をセットして一覧から除外。入出金・同意などの記録は保全し、監査ログを残す。
+ */
+export async function softDeleteMemberAction(formData: FormData) {
+  const session = await requireFeature('members')
+  const id = str(formData.get('id'))
+  if (!id) redirect('/admin/members')
+  try {
+    await softDeleteMember(id, { id: session.userId, name: session.name })
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('NEXT_REDIRECT')) throw e
+    const msg = e instanceof Error ? e.message : 'unknown'
+    redirect(`/admin/members/${id}?del=error&msg=${encodeURIComponent(msg)}`)
+  }
+  await notifyAdmin('member_deleted', '会員登録を削除', `会員登録を削除しました（復元可）。`)
+  revalidatePath('/admin/members')
+  redirect('/admin/members?del=done')
+}
+
+/** ソフト削除した会員を復元する（migration 048）。 */
+export async function restoreMemberAction(formData: FormData) {
+  const session = await requireFeature('members')
+  const id = str(formData.get('id'))
+  if (!id) redirect('/admin/members')
+  try {
+    await restoreMember(id, { id: session.userId, name: session.name })
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('NEXT_REDIRECT')) throw e
+    const msg = e instanceof Error ? e.message : 'unknown'
+    redirect(`/admin/members/${id}?del=error&msg=${encodeURIComponent(msg)}`)
+  }
+  revalidatePath(`/admin/members/${id}`)
+  redirect(`/admin/members/${id}?del=restored`)
 }
 
 /**

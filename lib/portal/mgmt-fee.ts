@@ -45,6 +45,25 @@ export function monthlyMgmtFee(slots: number, unit: number): number {
   return Math.max(0, slots - 1) * unit
 }
 
+/**
+ * 全加盟店の月額管理手数料（税抜・当月ぶん）の合計。資金管理（全体）のサマリ用。
+ * 上位プラン(default_auto_slots>=2)かつ自動売買権限を持つ加盟者について (枠数−1)×単価 を合算。
+ */
+export async function sumMonthlyMgmtFee(): Promise<number> {
+  const supabase = createServiceRoleClient()
+  const unit = await getMgmtFeeUnit()
+  const { data } = await supabase
+    .from('members')
+    .select('grant_auto, auto_slots, plan:plans(default_auto_slots)')
+    .is('deleted_at', null) // 削除済みは集計から除外（migration 048）
+  let total = 0
+  for (const m of (data ?? []) as { grant_auto: boolean; auto_slots: number; plan: { default_auto_slots: number } | null }[]) {
+    const eligible = !!m.grant_auto && (m.plan?.default_auto_slots ?? 0) >= 2
+    if (eligible) total += monthlyMgmtFee(m.auto_slots ?? 0, unit)
+  }
+  return total
+}
+
 type MemberFeeRow = {
   id: string
   member_name: string
@@ -206,6 +225,7 @@ export async function runMonthlyMgmtFeeAll(ranBy: string | null): Promise<MgmtFe
     .from('members')
     .select('id, grant_auto, plan:plans(default_auto_slots)')
     .eq('grant_auto', true)
+    .is('deleted_at', null) // 削除済みは月次課金の対象外（migration 048）
   const rows = (data ?? []) as { id: string; grant_auto: boolean; plan: { default_auto_slots: number } | null }[]
   const targets = rows.filter((r) => (r.plan?.default_auto_slots ?? 0) >= 2)
   const results: MgmtFeeRunResult[] = []

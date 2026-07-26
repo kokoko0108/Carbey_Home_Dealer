@@ -3908,6 +3908,46 @@ update portal.system_settings set note = '【廃止】旧・出金手数料。wi
 update portal.system_settings set note = '【廃止】旧・年間チケット枚数。withdrawal_free_per_year へ移行' where key = 'withdrawal_tickets_per_year';
 
 
+-- =====================================================================
+-- ## 048_member_soft_delete.sql
+-- 会員のソフト削除（#11/#16）＋監査ログ。物理削除せず deleted_at で無効化し記録を保全。
+-- =====================================================================
+
+alter table portal.members add column if not exists deleted_at timestamptz;
+alter table portal.members add column if not exists deleted_by uuid references auth.users(id) on delete set null;
+create index if not exists idx_members_deleted_at on portal.members(deleted_at);
+comment on column portal.members.deleted_at is 'ソフト削除日時（NULL=有効）。物理削除せず一覧から除外する';
+comment on column portal.members.deleted_by is 'ソフト削除を実行した本部ユーザー';
+
+create table if not exists portal.audit_logs (
+  id           uuid primary key default gen_random_uuid(),
+  actor_id     uuid references auth.users(id) on delete set null,
+  actor_name   text,
+  action       text not null,
+  target_type  text not null,
+  target_id    uuid,
+  target_label text,
+  detail       text,
+  created_at   timestamptz not null default now()
+);
+create index if not exists idx_audit_logs_created on portal.audit_logs(created_at desc);
+create index if not exists idx_audit_logs_target on portal.audit_logs(target_type, target_id);
+
+alter table portal.audit_logs enable row level security;
+drop policy if exists portal_audit_staff_read on portal.audit_logs;
+create policy portal_audit_staff_read on portal.audit_logs
+  for select using (portal.is_staff(auth.uid()));
+
+
+-- =====================================================================
+-- ## 049_plan_default_capital_per_slot.sql
+-- プランに「自動売買 1枠あたり上限額（運用資金）」の既定を追加（#17）。
+-- =====================================================================
+
+alter table portal.plans add column if not exists default_capital_per_slot_yen int not null default 4000000;
+comment on column portal.plans.default_capital_per_slot_yen is '自動売買 1枠あたり上限額（運用資金）の既定。会員作成時に capital_per_slot_yen の初期値として使う（#17）';
+
+
 -- ## 仕上げ: PostgREST スキーマキャッシュを再読込
 -- #####################################################################
 notify pgrst, 'reload schema';

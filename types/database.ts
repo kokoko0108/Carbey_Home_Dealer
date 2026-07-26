@@ -27,6 +27,8 @@ export type PlanRow = {
   default_auto_slots: number
   /** 自動売買の月額管理手数料（⑦・migration 036）。上位プランで設定 */
   mgmt_fee_monthly_yen: number
+  /** 自動売買 1枠あたり上限額（運用資金）の既定（#17・migration 049）。会員の capital_per_slot_yen 初期値 */
+  default_capital_per_slot_yen: number
   joining_fee_yen: number
   display_order: number
   description: string | null
@@ -44,6 +46,7 @@ export type PlanInsert = {
   monthly_fee_yen?: number
   default_auto_slots?: number
   mgmt_fee_monthly_yen?: number
+  default_capital_per_slot_yen?: number
   joining_fee_yen?: number
   display_order?: number
   description?: string | null
@@ -107,6 +110,10 @@ export type MemberRow = {
   onboarding_total: number
   onboarding_done: number
   admin_notes: string | null
+  /** ソフト削除日時（NULL=有効・migration 048） */
+  deleted_at: string | null
+  /** ソフト削除を実行した本部ユーザー（migration 048） */
+  deleted_by: string | null
   created_at: string
   updated_at: string
 }
@@ -594,6 +601,19 @@ export type WithdrawalRequestRow = {
   updated_at: string
 }
 
+/** 監査ログ（会員削除・復元など重要操作の記録・migration 048）。 */
+export type AuditLogRow = {
+  id: string
+  actor_id: string | null
+  actor_name: string | null
+  action: string
+  target_type: string
+  target_id: string | null
+  target_label: string | null
+  detail: string | null
+  created_at: string
+}
+
 /** 月額管理手数料の月次課金 実行履歴（migration 043）。 */
 export type MemberMgmtFeeRunRow = {
   id: string
@@ -630,6 +650,7 @@ export type Database = {
       crm_deals: { Row: CrmDealRow; Insert: CrmDealInsert; Update: Partial<CrmDealInsert> }
       crm_deal_notes: { Row: CrmDealNoteRow; Insert: Partial<CrmDealNoteRow>; Update: Partial<CrmDealNoteRow> }
       notifications: { Row: NotificationRow; Insert: Partial<NotificationRow>; Update: Partial<NotificationRow> }
+      audit_logs: { Row: AuditLogRow; Insert: Partial<AuditLogRow>; Update: Partial<AuditLogRow> }
       onboarding_tasks: { Row: OnboardingTaskRow; Insert: Partial<OnboardingTaskRow>; Update: Partial<OnboardingTaskRow> }
       orders: { Row: OrderRow; Insert: Partial<OrderRow>; Update: Partial<OrderRow> }
       evidences: { Row: EvidenceRow; Insert: Partial<EvidenceRow>; Update: Partial<EvidenceRow> }

@@ -79,6 +79,7 @@ export async function listAllMemberFunds(): Promise<MemberFundsSummary[]> {
   const { data: members, error } = await supabase
     .from('members')
     .select('id, member_name, company_name, payment_status, joining_fee_yen')
+    .is('deleted_at', null) // 削除済みは集計から除外（migration 048）
     .order('created_at', { ascending: false })
   if (error) throw new Error(error.message)
 

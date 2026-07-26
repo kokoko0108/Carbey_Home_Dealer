@@ -193,8 +193,8 @@ export default function MemberFormFields({
           </div>
           <div>
             <label className={label}>1枠あたり運用資金 (円)</label>
-            <input name="capital_per_slot_yen" type="number" min="0" step="100000" defaultValue={member ? member.capital_per_slot_yen : 4000000} className={field} />
-            <p className="mt-1 text-xs text-slate-500">既定400万。預かり金でまかなえる枠数の判定に使用（不足分は受注不可）。</p>
+            <input name="capital_per_slot_yen" type="number" min="0" step="100000" defaultValue={member ? member.capital_per_slot_yen : ''} placeholder="空欄でプラン既定額を適用（例 4,000,000）" className={field} />
+            <p className="mt-1 text-xs text-slate-500">空欄なら選択プランの既定額（#17）を適用。預かり金でまかなえる枠数の判定に使用（不足分は受注不可）。</p>
           </div>
         </div>
       </section>

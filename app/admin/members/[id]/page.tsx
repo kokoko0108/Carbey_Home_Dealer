@@ -13,9 +13,11 @@ import { getMemberDealSummary, DEAL_STAGE_LABEL } from '@/lib/portal/deals'
 import { getSalesSummary } from '@/lib/portal/sales'
 import { listInvoices, listPaymentsByInvoice, INVOICE_KIND_LABEL, INVOICE_STATUS_LABEL } from '@/lib/portal/billing'
 import { listConsentLog } from '@/lib/portal/agreements'
+import { listAuditLogsForTarget } from '@/lib/portal/audit'
 import { MEMBER_STATUS_LABEL, yen } from '@/lib/portal/labels'
 import { Badge } from '@/components/ui/Badge'
-import { updateMemberAction, issueCredentialsAction } from '../actions'
+import { ConfirmSubmit } from '@/components/admin/ConfirmSubmit'
+import { updateMemberAction, issueCredentialsAction, softDeleteMemberAction, restoreMemberAction } from '../actions'
 import { reviewEvidenceAction } from '../evidence-actions'
 import { confirmSelfAction, setAdminStepAction } from '../funding-actions'
 import { addLedgerEntryAction, deleteLedgerEntryAction } from '../ledger-actions'
@@ -47,7 +49,7 @@ export default async function MemberDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ msg?: string; cred?: string; pw?: string; error?: string }>
+  searchParams: Promise<{ msg?: string; cred?: string; pw?: string; error?: string; del?: string }>
 }) {
   await requireFeature('members')
   const { id } = await params
@@ -62,6 +64,7 @@ export default async function MemberDetailPage({
     getMemberDealSummary(member.id), getSalesSummary(member.id),
     getMgmtFeePreview(member.id), listMgmtFeeRuns(member.id),
   ])
+  const auditLogs = await listAuditLogsForTarget('member', member.id, 10) // 監査ログ（削除・復元など・migration 048）
   // 各請求の消込内訳（入金明細）— 1クエリでまとめて取得（性能最適化A）
   const invoicePayments = await listPaymentsByInvoice(invoices.map((inv) => inv.id))
   const billingTotals = invoices.reduce(
@@ -86,6 +89,21 @@ export default async function MemberDetailPage({
         <ArrowLeft className="h-4 w-4" />
         加盟店一覧へ
       </Link>
+
+      {member.deleted_at && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3">
+          <div className="text-sm text-amber-800">
+            <span className="font-semibold">この会員は削除済みです</span>
+            <span className="ml-2 text-xs text-amber-700">（{new Date(member.deleted_at).toLocaleString('ja-JP')} 削除・一覧には表示されません／記録は保全）</span>
+          </div>
+          <form action={restoreMemberAction}>
+            <input type="hidden" name="id" value={member.id} />
+            <button className="rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">復元する</button>
+          </form>
+        </div>
+      )}
+      {sp.del === 'restored' && <div className="mb-4 rounded-lg border border-green-300 bg-green-50 px-4 py-2 text-sm text-green-700">会員を復元しました。</div>}
+      {sp.del === 'error' && <div className="mb-4 rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700">削除／復元に失敗しました：{sp.msg}</div>}
 
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-500 text-lg font-semibold text-white">
@@ -833,6 +851,52 @@ export default async function MemberDetailPage({
           </table>
         </div>
       </section>
+
+      {/* 監査ログ（削除・復元など重要操作）migration 048 */}
+      {auditLogs.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <ShieldCheck className="h-4 w-4 text-slate-500" /> 操作ログ（監査）
+          </h2>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
+            <ul className="space-y-2">
+              {auditLogs.map((a) => (
+                <li key={a.id} className="flex items-start gap-2 text-xs text-slate-600">
+                  <Clock className="mt-0.5 h-3 w-3 shrink-0 text-slate-400" />
+                  <span className="text-slate-400">{new Date(a.created_at).toLocaleString('ja-JP')}</span>
+                  <span className="font-medium text-slate-800">{a.action === 'member.delete' ? '削除' : a.action === 'member.restore' ? '復元' : a.action}</span>
+                  <span>{a.detail}</span>
+                  {a.actor_name && <span className="text-slate-400">by {a.actor_name}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+      )}
+
+      {/* 危険な操作：会員登録の削除（ソフト削除・復元可）#11/#16 */}
+      {!member.deleted_at && (
+        <section className="mt-8">
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-red-700">
+            <XCircle className="h-4 w-4" /> 会員登録の削除
+          </h2>
+          <div className="rounded-2xl border border-red-200 bg-red-50/50 p-4">
+            <p className="text-xs text-slate-600">
+              この会員を一覧から削除します。<span className="font-medium text-slate-800">物理削除ではなくソフト削除</span>のため、
+              入出金・同意記録などは保全され、あとから<span className="font-medium">「復元」</span>できます。操作は監査ログに記録されます。
+            </p>
+            <form action={softDeleteMemberAction} className="mt-3">
+              <input type="hidden" name="id" value={member.id} />
+              <ConfirmSubmit
+                message={`「${member.company_name ?? member.member_name}」の会員登録を削除します。よろしいですか？（あとから復元できます）`}
+                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                この会員を削除する
+              </ConfirmSubmit>
+            </form>
+          </div>
+        </section>
+      )}
     </div>
   )
 }
