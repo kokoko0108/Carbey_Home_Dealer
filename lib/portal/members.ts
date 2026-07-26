@@ -7,7 +7,7 @@ import type { MemberRow, MemberInsert, PaymentRow, PlanRow } from '@/types/datab
  * 呼び出し側で requireStaff 済みであること (service-role は RLS バイパス)。
  */
 
-export type MemberWithPlan = MemberRow & { plan: Pick<PlanRow, 'code' | 'name' | 'default_auto_slots'> | null }
+export type MemberWithPlan = MemberRow & { plan: Pick<PlanRow, 'code' | 'name' | 'default_auto_slots' | 'feature_ai' | 'feature_crm'> | null }
 
 export type MemberFilter = {
   q?: string // name/email/company 部分一致
@@ -21,7 +21,7 @@ export async function listMembers(filter: MemberFilter = {}): Promise<MemberWith
   const supabase = createServiceRoleClient()
   let query = supabase
     .from('members')
-    .select('*, plan:plans(code, name, default_auto_slots)')
+    .select('*, plan:plans(code, name, default_auto_slots, feature_ai, feature_crm)')
     .order('created_at', { ascending: false })
 
   if (!filter.includeDeleted) query = query.is('deleted_at', null) // 削除済みは一覧から除外（migration 048）
@@ -42,7 +42,7 @@ export async function listDeletedMembers(): Promise<MemberWithPlan[]> {
   const supabase = createServiceRoleClient()
   const { data, error } = await supabase
     .from('members')
-    .select('*, plan:plans(code, name, default_auto_slots)')
+    .select('*, plan:plans(code, name, default_auto_slots, feature_ai, feature_crm)')
     .not('deleted_at', 'is', null)
     .order('deleted_at', { ascending: false })
   if (error) throw new Error(error.message)
@@ -101,7 +101,7 @@ export async function getMember(id: string): Promise<MemberWithPlan | null> {
   const supabase = createServiceRoleClient()
   const { data, error } = await supabase
     .from('members')
-    .select('*, plan:plans(code, name, default_auto_slots)')
+    .select('*, plan:plans(code, name, default_auto_slots, feature_ai, feature_crm)')
     .eq('id', id)
     .maybeSingle()
   if (error) throw new Error(error.message)
@@ -167,7 +167,7 @@ export async function getMemberByUserId(userId: string): Promise<MemberWithPlan 
   const supabase = createServiceRoleClient()
   const { data, error } = await supabase
     .from('members')
-    .select('*, plan:plans(code, name, default_auto_slots)')
+    .select('*, plan:plans(code, name, default_auto_slots, feature_ai, feature_crm)')
     .eq('user_id', userId)
     .maybeSingle()
   if (error) throw new Error(error.message)

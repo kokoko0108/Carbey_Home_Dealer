@@ -22,6 +22,10 @@ export type PlanRow = {
   has_semi: boolean
   /** 自動売買モデルを保有するか（レビュー⑳） */
   has_auto: boolean
+  /** 加盟店の左メニューに「AI分析・相場」を表示するか（#18・migration 050） */
+  feature_ai: boolean
+  /** 加盟店の左メニューに「CRM（顧客管理）」を表示するか（#18/#19・migration 050） */
+  feature_crm: boolean
   monthly_fee_yen: number
   /** 自動売買の初期枠数（⑦・migration 036）。economy=1, 上位=2, 半自動=0 */
   default_auto_slots: number
@@ -29,6 +33,8 @@ export type PlanRow = {
   mgmt_fee_monthly_yen: number
   /** 自動売買 1枠あたり上限額（運用資金）の既定（#17・migration 049）。会員の capital_per_slot_yen 初期値 */
   default_capital_per_slot_yen: number
+  /** ロイヤリティ料率（％・#20・migration 051） */
+  royalty_pct: number
   joining_fee_yen: number
   display_order: number
   description: string | null
@@ -43,10 +49,13 @@ export type PlanInsert = {
   plan_type: PlanType
   has_semi?: boolean
   has_auto?: boolean
+  feature_ai?: boolean
+  feature_crm?: boolean
   monthly_fee_yen?: number
   default_auto_slots?: number
   mgmt_fee_monthly_yen?: number
   default_capital_per_slot_yen?: number
+  royalty_pct?: number
   joining_fee_yen?: number
   display_order?: number
   description?: string | null

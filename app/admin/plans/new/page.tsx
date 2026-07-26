@@ -67,6 +67,18 @@ export default async function NewPlanPage({
               </span>
             </label>
           </div>
+          {/* #18 左メニューの拡張機能をプラン単位で表示制御 */}
+          <div className="mt-3 mb-1 text-sm font-medium text-slate-700">加盟店メニューに表示する機能</div>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2.5 hover:bg-slate-50">
+              <input type="checkbox" name="feature_ai" defaultChecked className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400" />
+              <span className="text-sm text-slate-800">AI分析・相場</span>
+            </label>
+            <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white p-2.5 hover:bg-slate-50">
+              <input type="checkbox" name="feature_crm" defaultChecked className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400" />
+              <span className="text-sm text-slate-800">CRM（顧客管理）</span>
+            </label>
+          </div>
         </div>
         <div className="grid grid-cols-3 gap-4">
           <div>
@@ -80,6 +92,11 @@ export default async function NewPlanPage({
           <div>
             <label className={label}>表示順</label>
             <input name="display_order" type="number" defaultValue="0" className={field} />
+          </div>
+          {/* #20 ロイヤリティ料率 */}
+          <div>
+            <label className={label}>ロイヤリティ (%)</label>
+            <input name="royalty_pct" type="number" min="0" step="0.1" defaultValue="0" className={field} />
           </div>
         </div>
         {/* ⑦ 自動売買：初期枠数・月額管理手数料 */}

@@ -23,7 +23,10 @@ export default async function PortalLayout({ children }: { children: React.React
     // 半自動売買（旧「オーダー管理」・仕入れオーダー）。自動売買の下に配置（レビュー⑭）
     { href: '/portal/orders', label: '半自動売買', icon: 'order' },
     { href: '/portal/training', label: 'トレーニング', icon: 'training' },
-    { href: '/portal/ai', label: 'AI分析・相場', icon: 'ai', soon: true },
+    // AI分析・相場：プランで feature_ai が有効なときのみ表示（#18）
+    ...(member?.plan?.feature_ai ? [{ href: '/portal/ai', label: 'AI分析・相場', icon: 'ai' as const, soon: true }] : []),
+    // CRM（顧客管理）：プランで feature_crm が有効なときのみ表示（#18/#19）
+    ...(member?.plan?.feature_crm ? [{ href: '/portal/crm', label: 'CRM（顧客管理）', icon: 'crm' as const }] : []),
     { href: '/portal/withdrawal', label: '出金申請', icon: 'withdrawal' },
     { href: '/portal/reports', label: 'レポート', icon: 'report' },
     { href: '/portal/chat', label: 'チャット', icon: 'chat' },
