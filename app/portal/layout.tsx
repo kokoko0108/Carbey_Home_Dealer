@@ -45,7 +45,7 @@ export default async function PortalLayout({ children }: { children: React.React
       <PortalSidebar nav={nav} plan={plan} />
       <div className="lg:pl-64">
         <PortalTopbar
-          userName={session.name ?? session.email ?? 'ユーザー'}
+          userName={member?.member_name ?? session.name ?? session.email ?? 'ユーザー'}
           memberCode={memberCode}
           userId={session.userId}
           unread={unread}
