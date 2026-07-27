@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireFeature } from '@/lib/auth/session'
 import { createInvoice, createSlotPurchaseInvoice, recordPayment, markBilled, cancelInvoice, deleteInvoice } from '@/lib/portal/billing'
 import { runMonthlyMgmtFee, setMgmtFeeAuto } from '@/lib/portal/mgmt-fee'
+import { setMemberSlotCapital } from '@/lib/portal/auto-trading'
 import { redirect } from 'next/navigation'
 import type { InvoiceKind } from '@/types/database'
 
@@ -11,6 +12,25 @@ const KINDS: InvoiceKind[] = ['joining', 'system_fee', 'monthly', 'royalty', 'ma
 
 function num(v: FormDataEntryValue | null): number {
   return Number(String(v ?? '').replace(/[^\d]/g, ''))
+}
+
+/** ㊵ 自動売買 枠の資金設定（最低値・最高値）を加盟者ごとに保存（本部）。 */
+export async function setSlotCapitalAction(formData: FormData) {
+  await requireFeature('members')
+  const memberId = String(formData.get('member_id') ?? '')
+  if (!memberId) return
+  const maxCapital = num(formData.get('max_capital')) // 最高値＝1枠あたり運用資金
+  const minRaw = String(formData.get('min_deposit') ?? '').replace(/[^\d]/g, '')
+  const minDeposit = minRaw === '' ? null : Number(minRaw) // 空欄＝全体設定を使う
+  try {
+    await setMemberSlotCapital(memberId, { minDepositYen: minDeposit, maxCapitalYen: maxCapital })
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('NEXT_REDIRECT')) throw e
+    const msg = e instanceof Error ? e.message : '枠の資金設定に失敗しました'
+    redirect(`/admin/members/${memberId}?error=${encodeURIComponent(msg)}`)
+  }
+  revalidatePath(`/admin/members/${memberId}`)
+  redirect(`/admin/members/${memberId}?saved=slotcapital`)
 }
 
 /** #33 月額管理手数料の「自動引き落とし」ON/OFF を切り替える（本部）。 */

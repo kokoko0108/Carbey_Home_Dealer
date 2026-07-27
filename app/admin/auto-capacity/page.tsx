@@ -171,7 +171,7 @@ export default async function AutoCapacityPage({ searchParams }: { searchParams:
             </table>
           </div>
           <p className="border-t border-slate-100 px-5 py-2.5 text-[11px] text-slate-500">
-            「有効枠」＝<span className="font-medium text-slate-600">保有枠</span>と、<span className="font-medium text-slate-600">預かり金で使える枠</span>（預かり金 ÷ 1枠あたり運用資金）の<span className="font-medium text-slate-600">少ない方</span>。預かり金が不足すると保有枠より少なくなります（設定ミスではありません）。1枠あたり運用資金はプラン設定で調整できます。
+            「有効枠」＝<span className="font-medium text-slate-600">保有枠</span>と、<span className="font-medium text-slate-600">預かり金で使える枠</span>（予算 ÷ <span className="font-medium text-slate-600">最高値</span>＝1枠あたり運用資金）の<span className="font-medium text-slate-600">少ない方</span>。預かり金が不足すると保有枠より少なくなります（設定ミスではありません）。<span className="text-slate-600">最低値（受注ロック）・最高値（枠カウントの基準）は会員詳細で加盟者ごとに設定できます。</span>
           </p>
         </CardBody>
       </Card>
@@ -187,9 +187,9 @@ export default async function AutoCapacityPage({ searchParams }: { searchParams:
               <p className="mt-1 text-[11px] text-slate-400">インフラ拡張・業務提携で増やせます（例：200→400）。</p>
             </div>
             <div>
-              <label className="mb-1 block text-xs text-slate-500">受注に必要な最低預かり金（円）</label>
+              <label className="mb-1 block text-xs text-slate-500">受注に必要な最低預かり金（全体の既定＝最低値）</label>
               <input name="auto_min_deposit" type="number" min="0" step="100000" defaultValue={settings.minDeposit} className="w-44 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-              <p className="mt-1 text-[11px] text-slate-400">これ未満は自動売買の受注をロック（既定100万）。</p>
+              <p className="mt-1 text-[11px] text-slate-400">これ未満は自動売買の受注をロック（既定100万）。<span className="text-slate-500">加盟者ごとに「最低値」を設定した場合はそちらが優先されます（会員詳細）。</span></p>
             </div>
             <div>
               <label className="mb-1 block text-xs text-slate-500">起票の最低価格（円）</label>

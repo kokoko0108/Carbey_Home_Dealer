@@ -36,6 +36,30 @@ export async function setAutoSetting(key: 'auto_capacity_total' | 'auto_min_depo
 }
 
 /**
+ * ㊵ 加盟者ごとの「枠の資金設定」を更新する。
+ *   最高値（maxCapitalYen＝capital_per_slot_yen）＝1枠あたり運用資金。枠数はこの値を基準にカウント（floor(予算÷最高値)）。
+ *   最低値（minDepositYen＝auto_min_deposit_yen）＝受注ロックの最低預かり金。null で全体設定を使用。
+ *   最低値＝最高値 に揃えると、その値ごとに枠がカウントされる（例：どちらも100万・予算200万→2枠）。
+ */
+export async function setMemberSlotCapital(
+  memberId: string,
+  input: { minDepositYen: number | null; maxCapitalYen: number },
+): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const maxCapital = Math.round(input.maxCapitalYen)
+  if (!(maxCapital > 0)) throw new Error('最高値（1枠あたりの運用資金）は1円以上で設定してください。')
+  const minDeposit = input.minDepositYen == null ? null : Math.max(0, Math.round(input.minDepositYen))
+  if (minDeposit != null && minDeposit > maxCapital) {
+    throw new Error('最低値は最高値以下で設定してください（最低値 ≤ 最高値）。')
+  }
+  const { error } = await supabase
+    .from('members')
+    .update({ capital_per_slot_yen: maxCapital, auto_min_deposit_yen: minDeposit } as never)
+    .eq('id', memberId)
+  if (error) throw new Error(error.message)
+}
+
+/**
  * 加盟者の「有効枠数」を算出する（フェーズ2で受注可否に使う土台）。
  *   有効枠 = min(保有枠数, floor(自動売買用の預かり金 / 1枠あたり資金))
  *   ただし 預かり金 < 最低預かり金 なら 0（ロック）。
@@ -280,11 +304,11 @@ export async function listAutoMembers(): Promise<MemberAutoRow[]> {
     getGlobalAutoCapacity(),
     supabase
       .from('members')
-      .select('id, member_name, company_name, auto_slots, capital_per_slot_yen, grant_auto, grant_semi')
+      .select('id, member_name, company_name, auto_slots, capital_per_slot_yen, auto_min_deposit_yen, grant_auto, grant_semi')
       .eq('grant_auto', true)
       .order('member_name', { ascending: true }),
   ])
-  const rows = (membersRes.data ?? []) as { id: string; member_name: string; company_name: string | null; auto_slots: number; capital_per_slot_yen: number; grant_auto: boolean; grant_semi: boolean }[]
+  const rows = (membersRes.data ?? []) as { id: string; member_name: string; company_name: string | null; auto_slots: number; capital_per_slot_yen: number; auto_min_deposit_yen: number | null; grant_auto: boolean; grant_semi: boolean }[]
   if (rows.length === 0) return []
   const ids = rows.map((r) => r.id)
 
@@ -305,9 +329,9 @@ export async function listAutoMembers(): Promise<MemberAutoRow[]> {
     const budgets = deriveFlowBudgets({ grantAuto: m.grant_auto, grantSemi: m.grant_semi, balance, alloc: allocMap.get(m.id) ?? null })
     const cap = computeMemberCapacity({
       ownedSlots: m.auto_slots ?? 0,
-      capitalPerSlot: m.capital_per_slot_yen ?? 4_000_000,
+      capitalPerSlot: m.capital_per_slot_yen ?? 4_000_000, // 最高値＝枠カウントの基準
       autoBalance: budgets.autoBudget,
-      minDeposit: settings.minDeposit,
+      minDeposit: m.auto_min_deposit_yen ?? settings.minDeposit, // 最低値：加盟者設定→無ければ全体設定
       activeCount: activeMap.get(m.id) ?? 0,
       global,
     })
@@ -333,9 +357,9 @@ export async function getMemberAutoCapacity(memberId: string): Promise<MemberAut
     getGlobalAutoCapacity(),
     supabase
       .from('members')
-      .select('auto_slots, capital_per_slot_yen, grant_auto, grant_semi')
+      .select('auto_slots, capital_per_slot_yen, auto_min_deposit_yen, grant_auto, grant_semi')
       .eq('id', memberId)
-      .maybeSingle<{ auto_slots: number; capital_per_slot_yen: number; grant_auto: boolean; grant_semi: boolean }>(),
+      .maybeSingle<{ auto_slots: number; capital_per_slot_yen: number; auto_min_deposit_yen: number | null; grant_auto: boolean; grant_semi: boolean }>(),
   ])
   const m = memberRes.data
   const [balance, allocRes, dealCount] = await Promise.all([
@@ -347,9 +371,9 @@ export async function getMemberAutoCapacity(memberId: string): Promise<MemberAut
   const budgets = deriveFlowBudgets({ grantAuto: m?.grant_auto ?? false, grantSemi: m?.grant_semi ?? false, balance, alloc: allocRes.data ?? null })
   return computeMemberCapacity({
     ownedSlots: m?.auto_slots ?? 0,
-    capitalPerSlot: m?.capital_per_slot_yen ?? 4_000_000,
+    capitalPerSlot: m?.capital_per_slot_yen ?? 4_000_000, // 最高値＝枠カウントの基準
     autoBalance: budgets.autoBudget,
-    minDeposit: settings.minDeposit,
+    minDeposit: m?.auto_min_deposit_yen ?? settings.minDeposit, // 最低値：加盟者設定→無ければ全体設定
     activeCount: dealCount.count ?? 0,
     global,
   })

@@ -11,6 +11,7 @@ import { getMemberCapabilities } from '@/lib/portal/capabilities'
 import { getLedgerBalance, listLedgerEntries } from '@/lib/portal/ledger'
 import { getMemberDealSummary, DEAL_STAGE_LABEL } from '@/lib/portal/deals'
 import { getSalesSummary } from '@/lib/portal/sales'
+import { getMemberAutoCapacity, getAutoSettings } from '@/lib/portal/auto-trading'
 import { listInvoices, listPaymentsByInvoice, INVOICE_KIND_LABEL, INVOICE_STATUS_LABEL } from '@/lib/portal/billing'
 import { listConsentLog } from '@/lib/portal/agreements'
 import { listAuditLogsForTarget } from '@/lib/portal/audit'
@@ -21,7 +22,7 @@ import { updateMemberAction, issueCredentialsAction, softDeleteMemberAction, res
 import { reviewEvidenceAction } from '../evidence-actions'
 import { confirmSelfAction, setAdminStepAction } from '../funding-actions'
 import { addLedgerEntryAction, deleteLedgerEntryAction } from '../ledger-actions'
-import { createInvoiceAction, createSlotPurchaseAction, runMemberMgmtFeeAction, setMgmtFeeAutoAction, recordPaymentAction, markBilledAction, cancelInvoiceAction, deleteInvoiceAction } from '../billing-actions'
+import { createInvoiceAction, createSlotPurchaseAction, runMemberMgmtFeeAction, setMgmtFeeAutoAction, setSlotCapitalAction, recordPaymentAction, markBilledAction, cancelInvoiceAction, deleteInvoiceAction } from '../billing-actions'
 import { getMgmtFeePreview, listMgmtFeeRuns } from '@/lib/portal/mgmt-fee'
 import MemberFormFields from '../MemberFormFields'
 
@@ -54,7 +55,7 @@ export default async function MemberDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>
-  searchParams: Promise<{ msg?: string; cred?: string; pw?: string; error?: string; del?: string }>
+  searchParams: Promise<{ msg?: string; cred?: string; pw?: string; error?: string; del?: string; saved?: string }>
 }) {
   await requireFeature('members')
   const { id } = await params
@@ -70,6 +71,10 @@ export default async function MemberDetailPage({
     getMgmtFeePreview(member.id), listMgmtFeeRuns(member.id),
   ])
   const auditLogs = await listAuditLogsForTarget('member', member.id, 10) // 監査ログ（削除・復元など・migration 048）
+  // ㊵ 自動売買の枠：現在の有効枠プレビュー＋最低値/最高値の設定用
+  const [autoCap, autoSettings] = member.grant_auto
+    ? await Promise.all([getMemberAutoCapacity(member.id), getAutoSettings()])
+    : [null, null]
   // 各請求の消込内訳（入金明細）— 1クエリでまとめて取得（性能最適化A）
   const invoicePayments = await listPaymentsByInvoice(invoices.map((inv) => inv.id))
   const billingTotals = invoices.reduce(
@@ -182,6 +187,9 @@ export default async function MemberDetailPage({
       )}
       {sp.error && !['contract_date_required', 'email_duplicate', 'plan_required', 'grant_required'].includes(sp.error) && (
         <div className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">{sp.error}</div>
+      )}
+      {sp.saved === 'slotcapital' && (
+        <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">自動売買の枠の資金設定（最低値・最高値）を保存しました。</div>
       )}
       {sp.msg && (
         <div className="mb-4 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">{sp.msg}</div>
@@ -672,6 +680,41 @@ export default async function MemberDetailPage({
             </form>
           )
         })()}
+
+        {/* ㊵ 自動売買 枠の資金設定（最低値・最高値）— 加盟者ごとに任意設定・最高値基準で枠カウント */}
+        {member.grant_auto && (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <span className="text-sm font-semibold text-slate-900">自動売買 枠の資金設定（最低値・最高値）</span>
+              {autoCap && (
+                <span className="text-xs text-slate-500">現在：保有 {autoCap.ownedSlots}枠／有効 <span className={autoCap.effectiveSlots < autoCap.ownedSlots ? 'font-semibold text-amber-700' : 'font-semibold text-slate-700'}>{autoCap.effectiveSlots}枠</span>（予算 {yen(autoCap.autoBalance)}）</span>
+              )}
+            </div>
+            {/* 枠の概念の注釈（権限下位の担当者向け） */}
+            <div className="mb-3 rounded-lg border border-slate-100 bg-slate-50 p-3 text-[11px] leading-relaxed text-slate-600">
+              <div className="mb-1 font-semibold text-slate-700">枠のしくみ（担当者向けの注釈）</div>
+              ・<span className="font-medium text-slate-700">有効枠 ＝ min( 保有枠, 予算 ÷ 最高値 )</span>。枠は<span className="font-medium text-slate-700">「最高値」を基準にカウント</span>します。<br />
+              ・<span className="font-medium text-slate-700">最低値</span>＝受注できる最低預かり金。予算がこれ未満だと全枠ロックになります。<br />
+              ・<span className="font-medium text-slate-700">最低値＝最高値</span>に揃えると、その金額ごとに1枠（例：どちらも100万・予算200万 → 2枠）。<br />
+              ・別々（例：最低100万〜最高400万）なら、枠は最高値＝400万ごとに1枠でカウントします。
+            </div>
+            <form action={setSlotCapitalAction} className="flex flex-wrap items-end gap-3">
+              <input type="hidden" name="member_id" value={member.id} />
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">最低値（最低預かり金・円）</label>
+                <input name="min_deposit" inputMode="numeric" defaultValue={member.auto_min_deposit_yen ?? ''} placeholder={`空欄＝全体設定（${(autoSettings?.minDeposit ?? 0).toLocaleString()}円）`} className="w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-slate-600">最高値（1枠あたり運用資金・円）*</label>
+                <input name="max_capital" inputMode="numeric" defaultValue={member.capital_per_slot_yen ?? ''} className="w-56 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <button className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">保存</button>
+            </form>
+            {autoCap && autoCap.capitalLimited && (
+              <p className="mt-2 text-[11px] text-amber-600">現在、預かり金が不足しているため有効枠が保有枠より少なくなっています（あと {yen(autoCap.nextSlotShortfallYen)} の入金で次の1枠が有効になります）。</p>
+            )}
+          </div>
+        )}
 
         {/* 月額管理手数料（枠数連動・本部が月次で相殺／請求）— 2026-07-21 改定 */}
         {member.grant_auto && mgmtFee.eligible && (
