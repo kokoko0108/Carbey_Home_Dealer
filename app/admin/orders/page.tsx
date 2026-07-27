@@ -58,7 +58,7 @@ export default async function AdminOrdersPage({
             <ArrowLeft className="h-4 w-4" /> {member.company_name ?? member.member_name} の詳細へ
           </Link>
         )}
-        <h1 className="text-xl font-bold text-slate-900">オーダー管理{member ? `：${member.company_name ?? member.member_name}` : ''}</h1>
+        <h1 className="text-xl font-bold text-slate-900">半自動売買オーダー管理{member ? `：${member.company_name ?? member.member_name}` : ''}</h1>
         <p className="text-sm text-slate-500">加盟店からの仕入れ依頼と、半自動売買の進捗を一元管理します。</p>
       </div>
 

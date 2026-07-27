@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { ArrowLeft, CheckCircle2, KeyRound, ShieldCheck, Eye, Download, Clock, XCircle, Wallet, Lock, ScrollText, ShoppingCart, ChevronRight } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, KeyRound, ShieldCheck, Eye, Download, Clock, XCircle, Wallet, Lock, ScrollText, ShoppingCart, ChevronRight, Trash2 } from 'lucide-react'
 import { requireFeature } from '@/lib/auth/session'
 import { getMember, listPayments } from '@/lib/portal/members'
 import { listPlans } from '@/lib/portal/plans'
@@ -9,7 +9,7 @@ import { getFunding, LOAN_STEPS } from '@/lib/portal/funding'
 import { getMemberOrderSummary } from '@/lib/portal/orders'
 import { getMemberCapabilities } from '@/lib/portal/capabilities'
 import { getLedgerBalance, listLedgerEntries } from '@/lib/portal/ledger'
-import { getMemberDealSummary, DEAL_STAGE_LABEL } from '@/lib/portal/deals'
+import { getMemberDealSummary, listDeletedDeals, DEAL_STAGE_LABEL } from '@/lib/portal/deals'
 import { getSalesSummary } from '@/lib/portal/sales'
 import { getMemberAutoCapacity, getAutoSettings } from '@/lib/portal/auto-trading'
 import { listInvoices, listPaymentsByInvoice, INVOICE_KIND_LABEL, INVOICE_STATUS_LABEL } from '@/lib/portal/billing'
@@ -20,7 +20,7 @@ import { Badge } from '@/components/ui/Badge'
 import { ConfirmSubmit } from '@/components/admin/ConfirmSubmit'
 import { updateMemberAction, issueCredentialsAction, softDeleteMemberAction, restoreMemberAction } from '../actions'
 import { reviewEvidenceAction } from '../evidence-actions'
-import { confirmSelfAction, setAdminStepAction } from '../funding-actions'
+import { confirmSelfAction, setAdminStepAction, setFundingMethodAction } from '../funding-actions'
 import { addLedgerEntryAction, deleteLedgerEntryAction } from '../ledger-actions'
 import { createInvoiceAction, createSlotPurchaseAction, runMemberMgmtFeeAction, setMgmtFeeAutoAction, setSlotCapitalAction, recordPaymentAction, markBilledAction, cancelInvoiceAction, deleteInvoiceAction } from '../billing-actions'
 import { getMgmtFeePreview, listMgmtFeeRuns } from '@/lib/portal/mgmt-fee'
@@ -71,6 +71,7 @@ export default async function MemberDetailPage({
     getMgmtFeePreview(member.id), listMgmtFeeRuns(member.id),
   ])
   const auditLogs = await listAuditLogsForTarget('member', member.id, 10) // 監査ログ（削除・復元など・migration 048）
+  const deletedDeals = await listDeletedDeals(member.id) // ㊸ 削除された案件の履歴（記録保全・migration 056）
   // ㊵ 自動売買の枠：現在の有効枠プレビュー＋最低値/最高値の設定用
   const [autoCap, autoSettings] = member.grant_auto
     ? await Promise.all([getMemberAutoCapacity(member.id), getAutoSettings()])
@@ -311,7 +312,7 @@ export default async function MemberDetailPage({
                 CRM顧客 <ChevronRight className="h-3 w-3" />
               </Link>
               <Link href={`/admin/orders?member=${member.id}`} className="flex items-center gap-0.5 text-xs font-medium text-brand-600 hover:underline">
-                オーダー管理 <ChevronRight className="h-3 w-3" />
+                半自動売買オーダー管理 <ChevronRight className="h-3 w-3" />
               </Link>
             </div>
           </div>
@@ -343,7 +344,7 @@ export default async function MemberDetailPage({
             <ShoppingCart className="h-4 w-4 text-brand-500" /> 担当車両（進捗・販売実績）
           </h2>
           <Link href={`/admin/vehicles?member=${member.id}`} className="flex items-center gap-0.5 text-xs font-medium text-brand-600 hover:underline">
-            車両進捗管理 <ChevronRight className="h-3 w-3" />
+            自動・半自動売買進捗管理 <ChevronRight className="h-3 w-3" />
           </Link>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center sm:grid-cols-5">
@@ -447,16 +448,45 @@ export default async function MemberDetailPage({
         )}
       </div>
 
-      {/* ===== 資金準備の確認（自己資金 / 資金調達） ===== */}
+      {/* ===== 資金準備の確認（自己資金 / 資金調達）— ㊹ 分岐を選択式で可視化 ===== */}
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-900">
           <Wallet className="h-4 w-4 text-brand-500" /> 資金準備の確認
         </h2>
-        {!funding?.method ? (
-          <p className="text-xs text-slate-400">加盟店がまだ資金準備の方法を選択していません。</p>
-        ) : funding.method === 'self' ? (
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm">
+
+        {/* 分岐の選択（自己資金 / 資金調達）— 本部が選択可・現在の選択をハイライト */}
+        <div className="mb-4">
+          <p className="mb-2 text-xs text-slate-500">資金準備の方法（分岐）を選択してください。加盟店側の選択とも同期します。</p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {([
+              { m: 'self' as const, label: '自己資金', desc: '自己資金で準備（本部が金額を確認）' },
+              { m: 'loan' as const, label: '資金調達', desc: 'ローン等で調達（ステップで進行）' },
+            ]).map((opt) => {
+              const active = funding?.method === opt.m
+              return (
+                <form key={opt.m} action={setFundingMethodAction}>
+                  <input type="hidden" name="member_id" value={member.id} />
+                  <input type="hidden" name="method" value={opt.m} />
+                  <button className={`w-full rounded-xl border-2 px-4 py-3 text-left transition ${active ? 'border-brand-500 bg-brand-50' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}>
+                    <div className="flex items-center justify-between">
+                      <span className={`text-sm font-semibold ${active ? 'text-brand-700' : 'text-slate-700'}`}>{opt.label}</span>
+                      {active
+                        ? <span className="flex items-center gap-1 text-[11px] font-medium text-brand-600"><CheckCircle2 className="h-3.5 w-3.5" /> 選択中</span>
+                        : <span className="text-[11px] text-slate-400">選択する</span>}
+                    </div>
+                    <p className="mt-0.5 text-[11px] text-slate-500">{opt.desc}</p>
+                  </button>
+                </form>
+              )
+            })}
+          </div>
+          {!funding?.method && <p className="mt-2 text-[11px] text-amber-600">まだ方法が選択されていません。上のいずれかを選択してください。</p>}
+        </div>
+
+        {/* 選択した分岐の詳細（可視化） */}
+        {funding?.method === 'self' ? (
+          <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm">
               <Badge tone="slate">自己資金</Badge>
               <span className="font-semibold text-slate-900">{yen(funding.self_amount_yen)}</span>
               {funding.self_confirmed && <span className="flex items-center gap-1 text-xs text-green-700"><CheckCircle2 className="h-3.5 w-3.5" /> 確認済み</span>}
@@ -474,9 +504,9 @@ export default async function MemberDetailPage({
               </form>
             )}
           </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="mb-1 flex items-center gap-2 text-sm">
+        ) : funding?.method === 'loan' ? (
+          <div className="rounded-lg border border-slate-100 bg-slate-50/60 p-3">
+            <div className="mb-2 flex items-center gap-2 text-sm">
               <Badge tone="slate">資金調達</Badge>
               {funding.status === 'completed' && <span className="flex items-center gap-1 text-xs text-green-700"><CheckCircle2 className="h-3.5 w-3.5" /> 完了</span>}
             </div>
@@ -486,7 +516,7 @@ export default async function MemberDetailPage({
                 const prevDone = LOAN_STEPS.slice(0, i).every((s) => funding.step_status?.[s.key] === 'done')
                 const isAdmin = step.actor === 'admin'
                 return (
-                  <li key={step.key} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2">
+                  <li key={step.key} className="flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2">
                     <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${done ? 'bg-brand-500 text-white' : 'border border-slate-300 text-slate-400'}`}>
                       {done ? <CheckCircle2 className="h-3.5 w-3.5" /> : i + 1}
                     </span>
@@ -512,7 +542,7 @@ export default async function MemberDetailPage({
               })}
             </ol>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* ===== 利用規約 同意履歴（証拠保全ログ） ===== */}
@@ -525,18 +555,73 @@ export default async function MemberDetailPage({
         ) : (
           <ul className="space-y-1.5">
             {consents.map((c) => (
-              <li key={c.id} className="flex items-center gap-3 rounded-lg border border-slate-200 px-3 py-2 text-sm">
+              <li key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-slate-200 px-3 py-2 text-sm">
                 <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
-                <span className="flex-1 text-slate-800">
+                <span className="min-w-0 flex-1 text-slate-800">
                   {c.agreement_title ?? '（規約）'}
                   {c.agreement_version != null && <span className="ml-1.5 rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">v{c.agreement_version}</span>}
                 </span>
                 <span className="text-xs text-slate-500">{new Date(c.agreed_at).toLocaleString('ja-JP')}</span>
+                {/* #42 同意した規約の内容（本文・別添）を本部で確認できる導線。版ごとに保全された内容を読み取り専用表示。 */}
+                {c.agreement_id ? (
+                  <a href={`/admin/terms?view=${c.agreement_id}`} target="_blank" rel="noopener noreferrer" className="inline-flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1 text-xs font-medium text-info-600 hover:bg-slate-50">
+                    <Eye className="h-3.5 w-3.5" /> 内容を確認
+                  </a>
+                ) : (
+                  <span className="shrink-0 text-[11px] text-slate-400">規約は削除済み（記録のみ保全）</span>
+                )}
               </li>
             ))}
           </ul>
         )}
-        <p className="mt-2 text-[11px] text-slate-400">同意記録は改ざん防止のため保全されます（規約が更新・削除されても履歴は残ります）。</p>
+        <p className="mt-2 text-[11px] text-slate-400">同意記録は改ざん防止のため保全されます（規約が更新・削除されても履歴は残ります）。「内容を確認」で、その版の本文・別添（料金表・規定など）を確認できます。</p>
+      </div>
+
+      {/* ㊸ 削除された案件の履歴（記録保全・別テーブル。集計には含まれない） */}
+      <div className="mb-6 rounded-xl border border-slate-200 bg-white p-5">
+        <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <Trash2 className="h-4 w-4 text-slate-400" /> 削除された案件の履歴
+        </h2>
+        <p className="mb-3 text-[11px] text-slate-400">取消・オーダーのキャンセルで削除された案件を、記録保全として別に残しています（売上・利益の集計には含まれません）。</p>
+        {deletedDeals.length === 0 ? (
+          <p className="text-xs text-slate-400">削除された案件はありません。</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
+                <tr>
+                  <th className="px-3 py-2 font-medium">車両</th>
+                  <th className="px-3 py-2 font-medium">削除時ステージ</th>
+                  <th className="px-3 py-2 text-right font-medium">売上</th>
+                  <th className="px-3 py-2 text-right font-medium">粗利益</th>
+                  <th className="px-3 py-2 font-medium">理由</th>
+                  <th className="px-3 py-2 font-medium">削除日時</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {deletedDeals.map((d) => {
+                  const stage = ({ sourcing: '仕入れ中', prepping: '商品化中', listing: '販売中', delivered: '納品完了', sold: '売却済み', ordered: '発注' } as Record<string, string>)[d.status_at_deletion ?? ''] ?? d.status_at_deletion ?? '—'
+                  return (
+                    <tr key={d.id} className="hover:bg-slate-50">
+                      <td className="px-3 py-2 text-slate-700">
+                        {[d.maker, d.car_model].filter(Boolean).join(' ') || '—'}
+                        {d.order_number && <span className="ml-1 text-[10px] text-slate-400">{d.order_number}</span>}
+                      </td>
+                      <td className="px-3 py-2 text-slate-600">{stage}</td>
+                      <td className="px-3 py-2 text-right text-slate-600">{d.sale_price_yen != null ? yen(d.sale_price_yen) : '—'}</td>
+                      <td className={`px-3 py-2 text-right ${(d.gross_profit_yen ?? 0) >= 0 ? 'text-slate-600' : 'text-red-600'}`}>{d.gross_profit_yen != null ? yen(d.gross_profit_yen) : '—'}</td>
+                      <td className="px-3 py-2 text-slate-500">{d.reason ?? '—'}</td>
+                      <td className="px-3 py-2 text-xs text-slate-500">
+                        {new Date(d.deleted_at).toLocaleString('ja-JP')}
+                        {d.deleted_by_name && <div className="text-[10px] text-slate-400">{d.deleted_by_name}</div>}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* 編集フォーム */}

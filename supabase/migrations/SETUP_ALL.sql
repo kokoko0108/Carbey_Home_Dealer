@@ -4036,6 +4036,38 @@ comment on column portal.members.auto_min_deposit_yen is '自動売買の最低�
 comment on column portal.members.capital_per_slot_yen is '自動売買の最高値（1枠あたりの運用資金）。枠数はこの値を基準にカウント＝floor(予算÷最高値)（㊵・#17）';
 
 
+-- =====================================================================
+-- ## 056_deleted_deals.sql
+-- ㊸ 削除された案件の記録保全ログ（hard-delete 前のスナップショット）。閲覧は本部のみ。
+-- =====================================================================
+
+create table if not exists portal.deleted_deals (
+  id                 uuid primary key default gen_random_uuid(),
+  original_deal_id   uuid,
+  member_id          uuid references portal.members(id) on delete set null,
+  flow               text,
+  maker              text,
+  car_model          text,
+  status_at_deletion text,
+  sale_price_yen     bigint,
+  cost_total_yen     bigint,
+  gross_profit_yen   bigint,
+  order_id           uuid,
+  order_number       text,
+  reason             text,
+  deleted_by         uuid references auth.users(id) on delete set null,
+  deleted_by_name    text,
+  deleted_at         timestamptz not null default now()
+);
+create index if not exists idx_deleted_deals_member on portal.deleted_deals(member_id);
+create index if not exists idx_deleted_deals_deleted_at on portal.deleted_deals(deleted_at desc);
+comment on table portal.deleted_deals is '削除された案件の記録保全ログ（㊸）。hard-delete 前のスナップショット。閲覧は本部のみ';
+alter table portal.deleted_deals enable row level security;
+drop policy if exists portal_deleted_deals_staff_read on portal.deleted_deals;
+create policy portal_deleted_deals_staff_read on portal.deleted_deals
+  for select using (portal.is_staff(auth.uid()));
+
+
 -- ## 仕上げ: PostgREST スキーマキャッシュを再読込
 -- #####################################################################
 notify pgrst, 'reload schema';
