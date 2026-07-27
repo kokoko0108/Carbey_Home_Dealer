@@ -189,6 +189,10 @@ export type MemberAutoCapacity = {
   globalAvailable: number
   canAccept: boolean          // 受注可否
   blockReason?: string
+  // #40 可視化：保有枠−有効枠のギャップを説明するための派生値
+  slotsByCapital: number      // 預かり金で使える枠数 = floor(預かり金 / 1枠資金)
+  capitalLimited: boolean     // 有効枠が「保有枠」ではなく「預かり金」で抑えられているか（ギャップの主因が資金）
+  nextSlotShortfallYen: number // あと何円の入金で次の1枠が有効になるか（保有枠に達していれば0）
 }
 
 /** ユーザーIDから自分の自動売買キャパを取得（加盟店側）。auto権限が無ければ null。 */
@@ -213,6 +217,12 @@ export type MemberAutoRow = {
   availableSlots: number
   autoBalance: number
   canAccept: boolean
+  // #40 ギャップの説明用
+  capitalPerSlot: number
+  minDeposit: number
+  depositLocked: boolean
+  capitalLimited: boolean
+  nextSlotShortfallYen: number
 }
 
 /**
@@ -233,6 +243,14 @@ export function computeMemberCapacity(input: {
   const eff = effectiveSlots({ ownedSlots, capitalPerSlot, autoBalance, minDeposit })
   const availableSlots = Math.max(0, eff - activeCount)
 
+  // #40 保有枠−有効枠ギャップの説明用
+  const slotsByCapital = capitalPerSlot > 0 ? Math.floor(Math.max(0, autoBalance) / capitalPerSlot) : ownedSlots
+  const capitalLimited = !depositLocked && eff < ownedSlots // 保有枠に届かない主因が資金
+  // 次の1枠を有効化するのに必要な残高＝(有効枠+1)×1枠資金。保有枠に達していれば追加しても増えないので0。
+  const nextSlotShortfallYen = eff < ownedSlots && capitalPerSlot > 0
+    ? Math.max(0, (eff + 1) * capitalPerSlot - Math.max(0, autoBalance))
+    : 0
+
   let blockReason: string | undefined
   if (depositLocked) blockReason = `預かり金が最低額（${minDeposit.toLocaleString()}円）に満たないため受注できません`
   else if (eff <= 0) {
@@ -247,6 +265,7 @@ export function computeMemberCapacity(input: {
     depositLocked, effectiveSlots: eff, activeCount, availableSlots,
     globalActive: global.active, globalTotal: global.total, globalAvailable: global.available,
     canAccept: !blockReason, blockReason,
+    slotsByCapital, capitalLimited, nextSlotShortfallYen,
   }
 }
 
@@ -296,6 +315,8 @@ export async function listAutoMembers(): Promise<MemberAutoRow[]> {
       memberId: m.id, memberName: m.member_name, companyName: m.company_name,
       ownedSlots: cap.ownedSlots, effectiveSlots: cap.effectiveSlots, activeCount: cap.activeCount,
       availableSlots: cap.availableSlots, autoBalance: cap.autoBalance, canAccept: cap.canAccept,
+      capitalPerSlot: cap.capitalPerSlot, minDeposit: cap.minDeposit,
+      depositLocked: cap.depositLocked, capitalLimited: cap.capitalLimited, nextSlotShortfallYen: cap.nextSlotShortfallYen,
     }
   })
 }

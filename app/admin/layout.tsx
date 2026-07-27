@@ -37,7 +37,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     primary.push({ href: '/admin/crm', label: 'CRM', icon: 'crm' })
   }
   primary.push({ href: '/admin/ai-usage', label: 'AI利用状況', icon: 'aiUsage', soon: true })
-  primary.push({ href: '/admin/reports', label: 'レポート', icon: 'report', soon: true })
+  primary.push({ href: '/admin/reports', label: 'レポート', icon: 'report' })
 
   const settingsItems: NavEntry[] = []
   if (canAccess(session.role, 'plans')) settingsItems.push({ href: '/admin/plans', label: 'プラン管理', icon: 'settings' })

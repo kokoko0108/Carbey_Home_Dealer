@@ -3,7 +3,7 @@ import Link from 'next/link'
 import {
   CheckCircle2, Loader2, Car, ClipboardPlus, Search, FileBarChart,
   MessageSquare, ChevronRight, Bot, Hand, ArrowRight, Clock, Sparkles,
-  Package, Wrench, Truck, SlidersHorizontal,
+  Package, Wrench, Truck, SlidersHorizontal, Wallet,
 } from 'lucide-react'
 import { requireMember } from '@/lib/auth/session'
 import { getMemberByUserId } from '@/lib/portal/members'
@@ -229,27 +229,55 @@ export default async function MemberDashboardPage() {
               {autoCapacity.canAccept ? '受注可能' : '受注不可'}
             </span>
           </div>
+          {/* 枠の流れ：保有 → 有効（預かり金で使える） → 稼働 → 空き */}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-xl border border-carbon-700 bg-carbon-800/40 p-3 text-center">
-              <div className="text-2xl font-bold text-white">{autoCapacity.effectiveSlots}</div>
-              <div className="text-[11px] text-slate-400">有効枠（保有{autoCapacity.ownedSlots}）</div>
+              <div className="text-2xl font-bold text-white">{autoCapacity.ownedSlots}</div>
+              <div className="text-[11px] text-slate-300">保有枠</div>
+              <div className="text-[10px] text-slate-500">契約した枠</div>
+            </div>
+            <div className={`rounded-xl border p-3 text-center ${autoCapacity.capitalLimited || autoCapacity.depositLocked ? 'border-amber-500/40 bg-amber-500/10' : 'border-carbon-700 bg-carbon-800/40'}`}>
+              <div className={`text-2xl font-bold ${autoCapacity.capitalLimited || autoCapacity.depositLocked ? 'text-amber-300' : 'text-white'}`}>{autoCapacity.effectiveSlots}</div>
+              <div className="text-[11px] text-slate-300">有効枠</div>
+              <div className="text-[10px] text-slate-500">預かり金で使える枠</div>
             </div>
             <div className="rounded-xl border border-carbon-700 bg-carbon-800/40 p-3 text-center">
               <div className="text-2xl font-bold text-white">{autoCapacity.activeCount}</div>
-              <div className="text-[11px] text-slate-400">稼働中</div>
+              <div className="text-[11px] text-slate-300">稼働中</div>
+              <div className="text-[10px] text-slate-500">運用中の台数</div>
             </div>
-            <div className="rounded-xl border border-carbon-700 bg-carbon-800/40 p-3 text-center">
+            <div className="rounded-xl border border-brand-500/30 bg-brand-500/10 p-3 text-center">
               <div className="text-2xl font-bold text-brand-300">{autoCapacity.availableSlots}</div>
-              <div className="text-[11px] text-slate-400">空き枠</div>
-            </div>
-            <div className="rounded-xl border border-carbon-700 bg-carbon-800/40 p-3 text-center">
-              <div className="text-2xl font-bold text-white">{autoCapacity.globalAvailable}</div>
-              <div className="text-[11px] text-slate-400">全体の空き（/{autoCapacity.globalTotal}台）</div>
+              <div className="text-[11px] text-slate-300">空き枠</div>
+              <div className="text-[10px] text-slate-500">今すぐ受注できる枠</div>
             </div>
           </div>
-          {!autoCapacity.canAccept && autoCapacity.blockReason && (
+
+          {/* #40 ギャップの説明：なぜ有効枠が保有枠より少ないか＋次の枠に必要な入金額 */}
+          {autoCapacity.depositLocked ? (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+              <Wallet className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>預かり金が最低額（{yen(autoCapacity.minDeposit)}）に満たないため、現在すべての枠がロック中です。<b className="text-amber-200">{yen(autoCapacity.minDeposit)}</b> 以上のご入金で解除されます。</span>
+            </div>
+          ) : autoCapacity.capitalLimited ? (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+              <Wallet className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>保有 {autoCapacity.ownedSlots}枠のうち、いま有効なのは <b className="text-amber-200">{autoCapacity.effectiveSlots}枠</b>です。1枠の運用には預かり金 <b className="text-amber-200">{yen(autoCapacity.capitalPerSlot)}</b> が必要です（現在 {yen(autoCapacity.autoBalance)}）。あと <b className="text-amber-200">{yen(autoCapacity.nextSlotShortfallYen)}</b> のご入金で {autoCapacity.effectiveSlots + 1}枠目が有効になります。</span>
+            </div>
+          ) : autoCapacity.ownedSlots > 0 && autoCapacity.effectiveSlots >= autoCapacity.ownedSlots ? (
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">
+              <CheckCircle2 className="h-4 w-4 shrink-0" /> 保有している {autoCapacity.ownedSlots}枠すべてが有効です。
+            </div>
+          ) : null}
+          {!autoCapacity.canAccept && autoCapacity.blockReason && !autoCapacity.depositLocked && !autoCapacity.capitalLimited && (
             <p className="mt-2 text-xs text-amber-300">{autoCapacity.blockReason}</p>
           )}
+
+          {/* 全体キャパ + 計算式の凡例 */}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-1 border-t border-carbon-700 pt-3 text-[11px] text-slate-400">
+            <span>全体の空き <span className="font-semibold text-slate-200">{autoCapacity.globalAvailable}</span> / {autoCapacity.globalTotal}台</span>
+            <span className="text-slate-500">※「有効枠」＝保有枠と、預かり金で使える枠（預かり金 ÷ 1枠資金）の少ない方</span>
+          </div>
           {/* 受注待ち（予約）：順番表示 or 申込ボタン */}
           {waitingPos ? (
             <div className="mt-3 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-300">
