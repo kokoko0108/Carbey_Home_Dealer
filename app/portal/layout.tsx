@@ -37,6 +37,8 @@ export default async function PortalLayout({ children }: { children: React.React
 
   // 拡張オプション（今後の拡張予定・レビュー⑨）。非クリックの状態バッジ表示。
   const expansion: PortalNavEntry[] = [
+    // #25 仕入れオーダー数の拡張（加盟店ごとに本部が個別拡張・要相談）
+    { href: '#', label: '仕入れオーダー拡張', icon: 'order', tag: { text: '相談', tone: 'sky' } },
     { href: '#', label: 'プラン変更', icon: 'plan_change', tag: { text: '提供予定', tone: 'sky' } },
     { href: '#', label: 'フルオート輸出', icon: 'export', tag: { text: '開発中', tone: 'amber' } },
     { href: '#', label: '代理店申請', icon: 'agency', tag: { text: '開発中', tone: 'amber' } },

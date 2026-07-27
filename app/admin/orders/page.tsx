@@ -8,8 +8,9 @@ import { ORDER_STATUS_LABEL, ORDER_STATUS_TONE, yen } from '@/lib/portal/labels'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import type { OrderStatus, DealStatusStage, VehicleDealRow } from '@/types/database'
-import { setOrderStatusAction } from './actions'
+import { setOrderStatusAction, approveOrderAction, rejectOrderAction } from './actions'
 import { adminMoveToPreppingAction } from './deal-actions'
+import { ConfirmSubmit } from '@/components/admin/ConfirmSubmit'
 
 export const dynamic = 'force-dynamic'
 
@@ -143,17 +144,49 @@ export default async function AdminOrdersPage({
                     </td>
 
                     <td className="px-5 py-3">
-                      <div className="flex items-center gap-2">
+                      <div className="space-y-2">
                         <Badge tone={ORDER_STATUS_TONE[o.status]}>{ORDER_STATUS_LABEL[o.status]}</Badge>
-                        <form action={setOrderStatusAction} className="flex items-center gap-1">
-                          <input type="hidden" name="id" value={o.id} />
-                          <select name="status" defaultValue={o.status} className={field}>
-                            {STATUSES.map((s) => (
-                              <option key={s} value={s}>{ORDER_STATUS_LABEL[s]}</option>
-                            ))}
-                          </select>
-                          <button className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">更新</button>
-                        </form>
+                        {o.reject_reason && <div className="max-w-[220px] text-[11px] text-red-600">非承認理由：{o.reject_reason}</div>}
+                        {o.status === 'received' ? (
+                          <div className="space-y-1.5">
+                            {/* 承認（誤操作防止の確認つき） */}
+                            <form action={approveOrderAction}>
+                              <input type="hidden" name="id" value={o.id} />
+                              <ConfirmSubmit message="このオーダーを承認しますか？（仕入れを進めます）" className="inline-flex items-center gap-1 rounded-md bg-green-600 px-3 py-1 text-xs font-semibold text-white hover:bg-green-700">
+                                <Check className="h-3.5 w-3.5" /> 承認する
+                              </ConfirmSubmit>
+                            </form>
+                            {/* 非承認：クイック理由2種 */}
+                            <div className="flex flex-wrap items-center gap-1">
+                              <form action={rejectOrderAction}>
+                                <input type="hidden" name="id" value={o.id} />
+                                <input type="hidden" name="reason" value="仕入れ資金の増額をお願いします。ご入金後に再度オーダーください。" />
+                                <ConfirmSubmit message="「仕入れ資金の増額要請」で非承認にしますか？" className="rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 hover:bg-amber-100">仕入れ資金の増額要請</ConfirmSubmit>
+                              </form>
+                              <form action={rejectOrderAction}>
+                                <input type="hidden" name="id" value={o.id} />
+                                <input type="hidden" name="reason" value="ご希望の条件では仕入れの実現が困難です。条件を調整のうえ再度ご相談ください。" />
+                                <ConfirmSubmit message="「実現が困難」で非承認にしますか？" className="rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50">実現が困難</ConfirmSubmit>
+                              </form>
+                            </div>
+                            {/* 非承認：自由記入 */}
+                            <form action={rejectOrderAction} className="flex items-center gap-1">
+                              <input type="hidden" name="id" value={o.id} />
+                              <input name="reason" placeholder="非承認の理由（自由記入）" className={`${field} w-40`} />
+                              <ConfirmSubmit message="このオーダーを非承認にしますか？" className="rounded-md border border-red-200 px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50">非承認</ConfirmSubmit>
+                            </form>
+                          </div>
+                        ) : (
+                          <form action={setOrderStatusAction} className="flex items-center gap-1">
+                            <input type="hidden" name="id" value={o.id} />
+                            <select name="status" defaultValue={o.status} className={field}>
+                              {STATUSES.map((s) => (
+                                <option key={s} value={s}>{ORDER_STATUS_LABEL[s]}</option>
+                              ))}
+                            </select>
+                            <button className="rounded-md border border-slate-200 px-2 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">更新</button>
+                          </form>
+                        )}
                       </div>
                     </td>
                   </tr>

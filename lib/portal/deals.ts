@@ -3,6 +3,8 @@ import { listDealCosts, addDealCost } from '@/lib/portal/deal-costs'
 import { getLedgerBalance, addLedgerEntry } from '@/lib/portal/ledger'
 import { quoteShipping } from '@/lib/portal/shipping'
 import { getMemberAutoCapacity } from '@/lib/portal/auto-trading'
+import { getSetting } from '@/lib/portal/settings'
+import { getConsumptionTaxPct, taxOf } from '@/lib/portal/mgmt-fee'
 import type { VehicleDealRow, DealStatusStage, OrderRow } from '@/types/database'
 
 /**
@@ -117,6 +119,17 @@ export async function createManualDeal(input: {
     if (!cap.canAccept) throw new Error(cap.blockReason ?? '現在この加盟者の自動売買は受注できません。')
   }
   const supabase = createServiceRoleClient()
+
+  // #29 運転資金制御：起票額は「最低価格設定値」より上、「1枠あたり上限額（capital_per_slot）」より下であること
+  if (input.enforceCapacity !== false) {
+    const amount = input.orderAmountYen ?? 0
+    if (!amount || amount <= 0) throw new Error('予算（起票額）を入力してください。')
+    const minPrice = await getSetting('auto_min_price', 0)
+    const { data: mem } = await supabase.from('members').select('capital_per_slot_yen').eq('id', input.memberId).maybeSingle<{ capital_per_slot_yen: number }>()
+    const maxPrice = mem?.capital_per_slot_yen ?? 0
+    if (minPrice > 0 && amount <= minPrice) throw new Error(`起票額は最低価格（${minPrice.toLocaleString()}円）より上にしてください。`)
+    if (maxPrice > 0 && amount >= maxPrice) throw new Error(`起票額は1枠あたり上限額（${maxPrice.toLocaleString()}円）より下にしてください。`)
+  }
   const { data, error } = await supabase
     .from('vehicle_deals')
     .insert({
@@ -374,7 +387,21 @@ export async function settleAndDeliver(dealId: string, userId: string, isStaff: 
     throw new Error('陸送先（着地県）を設定するか、陸送費を費目に追加してください。')
   }
 
-  // 費用合計（陸送費追加後）と残金
+  // #28 セミオート：仕入れ手数料（既定50,000円＋消費税）を精算時に費目化（重複計上を防止）。
+  //   月額管理手数料が無い代わりの手数料。半自動（flow='semi'）の案件のみ。
+  if (deal.flow === 'semi') {
+    const existing = await listDealCosts(dealId)
+    if (!existing.some((c) => (c.label ?? '').includes('仕入れ手数料'))) {
+      const base = await getSetting('sourcing_fee_yen', 50000)
+      if (base > 0) {
+        const taxPct = await getConsumptionTaxPct()
+        const fee = base + taxOf(base, taxPct)
+        await addDealCost({ dealId, kind: 'other', label: `仕入れ手数料（${base.toLocaleString()}円＋税）`, amount: fee })
+      }
+    }
+  }
+
+  // 費用合計（陸送費・仕入れ手数料 追加後）と残金
   const finalCosts = await listDealCosts(dealId)
   const costTotal = finalCosts.reduce((s, c) => s + (c.amount_yen ?? 0), 0)
   const balance = await getLedgerBalance(deal.member_id)
@@ -470,6 +497,28 @@ export async function recordSale(
     } as never)
     .eq('id', dealId)
   if (error) throw new Error(error.message)
+
+  // #30 ロイヤリティ：粗利益（販売価格−費用合計）× プラン料率 を売却時に預かり金から控除。
+  //   料率はプラン設定（royalty_pct・ブロンズ20%/プラチナ15%/ゴールド10% 等）。粗利がプラス、かつ未計上のときのみ。
+  const grossProfit = input.salePriceYen - (costTotal ?? 0)
+  const { count: royaltyDone } = await supabase.from('ledger_entries').select('id', { count: 'exact', head: true }).eq('deal_id', dealId).eq('kind', 'royalty')
+  if (!royaltyDone && grossProfit > 0) {
+    const { data: mp } = await supabase.from('members').select('plan:plans(royalty_pct)').eq('id', deal.member_id).maybeSingle<{ plan: { royalty_pct: number } | null }>()
+    const rate = mp?.plan?.royalty_pct ?? 0
+    if (rate > 0) {
+      const royalty = Math.round(grossProfit * (rate / 100))
+      if (royalty > 0) {
+        await addLedgerEntry({
+          memberId: deal.member_id,
+          kind: 'royalty',
+          amount: royalty,
+          note: `ロイヤリティ（粗利 ${grossProfit.toLocaleString()}円 × ${rate}%）：${[deal.maker, deal.car_model].filter(Boolean).join(' ')}`,
+          dealId,
+          createdBy: userId,
+        })
+      }
+    }
+  }
 }
 
 /**

@@ -403,7 +403,7 @@ export type EvidenceRow = {
 }
 
 // 半自動売買フェーズ1: 預かり金台帳（仕入れ資金）
-export type LedgerEntryKind = 'deposit' | 'withdraw' | 'settlement' | 'adjust' | 'mgmt_fee'
+export type LedgerEntryKind = 'deposit' | 'withdraw' | 'settlement' | 'adjust' | 'mgmt_fee' | 'royalty'
 
 export type MemberLedgerRow = {
   id: string
@@ -524,6 +524,11 @@ export type OrderRow = {
   notes: string | null
   status: OrderStatus
   admin_notes: string | null
+  /** 非承認の理由（本部・#24・migration 052） */
+  reject_reason: string | null
+  /** 承認日時（#24・migration 052） */
+  approved_at: string | null
+  approved_by: string | null
   created_at: string
   updated_at: string
 }

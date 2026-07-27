@@ -36,10 +36,10 @@ export const PAYMENT_STATUS_STYLE: Record<PaymentStatus, string> = {
 
 // オーダー (仕入れ依頼) ステータス
 export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
-  received: '受付中',
-  in_progress: '対応中',
+  received: '承認待ち',
+  in_progress: '承認済み（対応中）',
   completed: '完了',
-  cancelled: 'キャンセル',
+  cancelled: 'キャンセル／非承認',
 }
 
 export const ORDER_STATUS_TONE: Record<OrderStatus, 'amber' | 'blue' | 'green' | 'slate'> = {

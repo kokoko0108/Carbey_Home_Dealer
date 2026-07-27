@@ -7,6 +7,8 @@ import {
 } from 'lucide-react'
 import { requireMember } from '@/lib/auth/session'
 import { getMemberByUserId } from '@/lib/portal/members'
+import { listPlans } from '@/lib/portal/plans'
+import PlanUpgradeCard from '@/components/portal-dark/PlanUpgradeCard'
 import { getOwnOnboarding, getNextAction } from '@/lib/portal/onboarding'
 import { getOwnFlow } from '@/lib/portal/flow'
 import { listOwnOrders } from '@/lib/portal/orders'
@@ -29,7 +31,7 @@ export default async function MemberDashboardPage() {
   const session = await requireMember()
   const member = await getMemberByUserId(session.userId)
   // 独立した取得はすべて並列化（性能最適化A：直列awaitの排除）
-  const [onboarding, orders, announcements, flowInfo, dealSummary, activeDeals, invoices, salesReport, autoCapacity, flowBudgets] = await Promise.all([
+  const [onboarding, orders, announcements, flowInfo, dealSummary, activeDeals, invoices, salesReport, autoCapacity, flowBudgets, plans] = await Promise.all([
     getOwnOnboarding(session.userId),
     listOwnOrders(session.userId),
     listAnnouncements(true, 5),
@@ -40,6 +42,7 @@ export default async function MemberDashboardPage() {
     member ? getMonthlyReport(member.id) : Promise.resolve(null),
     getOwnAutoCapacity(session.userId), // 自動売買権限が無ければ null
     getOwnFlowBudgets(session.userId), // 予算振り分け（両フロー保有者のみUI表示）
+    listPlans(false), // #31 上位プラン紹介（有効プランのみ）
   ])
   const waitingPos = member && autoCapacity ? await getMemberWaitingPosition(member.id) : null // 受注待ちの順番（autoCapacity 依存）
   // 受注不可の理由が「全体上限のみ」（枠・資金はOK）なら予約導線を出す
@@ -362,6 +365,9 @@ export default async function MemberDashboardPage() {
           </div>
         </DarkCardBody>
       </DarkCard>
+
+      {/* #31 プランのアップグレード紹介（上位プランがある場合のみ表示） */}
+      <PlanUpgradeCard plans={plans} currentCode={member?.plan?.code ?? null} currentName={member?.plan?.name ?? null} />
     </div>
   )
 }
