@@ -98,8 +98,10 @@ export type MemberRow = {
   trading_override: boolean
   /** 自動売買の保有枠数（⑦・migration 036）。最大10 */
   auto_slots: number
-  /** 1枠あたり必要運用資金（⑦・migration 036）。既定400万・本部が加盟者ごと設定可 */
+  /** 自動売買の最高値＝1枠あたり運用資金（⑦・migration 036）。枠カウントの基準＝floor(予算÷最高値)。加盟者ごと設定可 */
   capital_per_slot_yen: number
+  /** 自動売買の最低値＝受注ロックの最低預かり金（㊵・migration 055）。加盟者ごと。null=全体設定 auto_min_deposit を使用 */
+  auto_min_deposit_yen: number | null
   /** 月額管理手数料の起算日＝枠取得日（migration 043）。NULL=初回課金時に当日で起算 */
   mgmt_fee_anchor: string | null
   /** 月額管理手数料の課金済み満了月数（migration 043・二重課金防止） */
@@ -148,6 +150,7 @@ export type MemberInsert = {
   trading_override?: boolean
   auto_slots?: number
   capital_per_slot_yen?: number
+  auto_min_deposit_yen?: number | null
   mgmt_fee_anchor?: string | null
   mgmt_fee_billed_months?: number
   bank_name?: string | null

@@ -4024,6 +4024,18 @@ alter table portal.members add column if not exists mgmt_fee_auto boolean not nu
 comment on column portal.members.mgmt_fee_auto is '月額管理手数料の自動引き落とし（true=満了月ごとに自動清算・#33）';
 
 
+-- =====================================================================
+-- ## 055_member_auto_min_deposit.sql
+-- ㊵ 自動売買の枠：最低値（受注ロックの最低預かり金）を加盟者ごとに設定可能に。
+--    最高値（capital_per_slot_yen）＝1枠あたり運用資金／枠カウントの基準。
+--    null なら全体設定 auto_min_deposit を使用（後方互換）。
+-- =====================================================================
+
+alter table portal.members add column if not exists auto_min_deposit_yen bigint;
+comment on column portal.members.auto_min_deposit_yen is '自動売買の最低値（受注ロックの最低預かり金）。加盟者ごとに任意設定。null なら全体設定 auto_min_deposit を使用（㊵）';
+comment on column portal.members.capital_per_slot_yen is '自動売買の最高値（1枠あたりの運用資金）。枠数はこの値を基準にカウント＝floor(予算÷最高値)（㊵・#17）';
+
+
 -- ## 仕上げ: PostgREST スキーマキャッシュを再読込
 -- #####################################################################
 notify pgrst, 'reload schema';
