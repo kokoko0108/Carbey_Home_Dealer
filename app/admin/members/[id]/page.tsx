@@ -21,7 +21,7 @@ import { updateMemberAction, issueCredentialsAction, softDeleteMemberAction, res
 import { reviewEvidenceAction } from '../evidence-actions'
 import { confirmSelfAction, setAdminStepAction } from '../funding-actions'
 import { addLedgerEntryAction, deleteLedgerEntryAction } from '../ledger-actions'
-import { createInvoiceAction, createSlotPurchaseAction, runMemberMgmtFeeAction, recordPaymentAction, markBilledAction, cancelInvoiceAction, deleteInvoiceAction } from '../billing-actions'
+import { createInvoiceAction, createSlotPurchaseAction, runMemberMgmtFeeAction, setMgmtFeeAutoAction, recordPaymentAction, markBilledAction, cancelInvoiceAction, deleteInvoiceAction } from '../billing-actions'
 import { getMgmtFeePreview, listMgmtFeeRuns } from '@/lib/portal/mgmt-fee'
 import MemberFormFields from '../MemberFormFields'
 
@@ -693,6 +693,13 @@ export default async function MemberDetailPage({
               <input type="hidden" name="member_id" value={member.id} />
               <button className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700">今月分を相殺／請求する</button>
               <span className="text-xs text-slate-500">満了月分を預かり金から相殺し、不足は請求（デポジット依頼）＋通知します。</span>
+            </form>
+            {/* #33 自動引き落とし（満了月ごとに自動清算） */}
+            <form action={setMgmtFeeAutoAction} className="mt-2 flex flex-wrap items-center gap-2 border-t border-amber-100 pt-2">
+              <input type="hidden" name="member_id" value={member.id} />
+              <input type="hidden" name="on" value={member.mgmt_fee_auto ? '0' : '1'} />
+              <span className="text-xs text-slate-600">自動引き落とし：<span className={member.mgmt_fee_auto ? 'font-semibold text-green-700' : 'text-slate-400'}>{member.mgmt_fee_auto ? 'ON（満了月ごとに自動清算）' : 'OFF（手動のみ）'}</span></span>
+              <button className="rounded-lg border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50">{member.mgmt_fee_auto ? 'OFFにする' : 'ONにする'}</button>
             </form>
             {mgmtFeeRuns.length > 0 && (
               <div className="mt-3 space-y-1 border-t border-amber-100 pt-2">

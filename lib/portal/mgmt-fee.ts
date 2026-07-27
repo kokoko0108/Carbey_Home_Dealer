@@ -233,6 +233,33 @@ export async function runMonthlyMgmtFeeAll(ranBy: string | null): Promise<MgmtFe
   return results
 }
 
+/**
+ * #33 自動引き落とし対象（mgmt_fee_auto=true・上位プランの自動売買）に月次実行。
+ * スケジューラ（cron）から /api/cron/mgmt-fee 経由で毎日呼ぶ想定。満了月が来た分だけ課金される
+ * （runMonthlyMgmtFee が mgmt_fee_billed_months で二重課金を防止するため、頻繁に呼んでも安全）。
+ */
+export async function runAutoMgmtFees(ranBy: string | null): Promise<MgmtFeeRunResult[]> {
+  const supabase = createServiceRoleClient()
+  // 自動フラグ・枠数はメモリ側で判定（削除済みは deleted_at で除外済み）。上位プランの自動売買かつ自動引き落としONのみ対象。
+  const { data } = await supabase
+    .from('members')
+    .select('id, grant_auto, mgmt_fee_auto, plan:plans(default_auto_slots)')
+    .eq('grant_auto', true)
+    .is('deleted_at', null)
+  const rows = (data ?? []) as { id: string; grant_auto: boolean; mgmt_fee_auto: boolean; plan: { default_auto_slots: number } | null }[]
+  const targets = rows.filter((r) => r.mgmt_fee_auto && (r.plan?.default_auto_slots ?? 0) >= 2)
+  const results: MgmtFeeRunResult[] = []
+  for (const t of targets) results.push(await runMonthlyMgmtFee(t.id, ranBy))
+  return results
+}
+
+/** #33 会員ごとの月額管理手数料「自動引き落とし」ON/OFF。 */
+export async function setMgmtFeeAuto(memberId: string, on: boolean): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const { error } = await supabase.from('members').update({ mgmt_fee_auto: on } as never).eq('id', memberId)
+  if (error) throw new Error(error.message)
+}
+
 /** 会員の月次実行履歴（新しい順）。 */
 export async function listMgmtFeeRuns(memberId: string, limit = 24): Promise<MemberMgmtFeeRunRow[]> {
   const supabase = createServiceRoleClient()

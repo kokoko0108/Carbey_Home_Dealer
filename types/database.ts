@@ -104,6 +104,8 @@ export type MemberRow = {
   mgmt_fee_anchor: string | null
   /** 月額管理手数料の課金済み満了月数（migration 043・二重課金防止） */
   mgmt_fee_billed_months: number
+  /** 月額管理手数料の自動引き落とし（#33・migration 054） */
+  mgmt_fee_auto: boolean
   // 出金の振込先（migration 044）
   bank_name: string | null
   bank_branch: string | null

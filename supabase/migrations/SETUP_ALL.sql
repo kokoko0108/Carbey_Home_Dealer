@@ -4015,6 +4015,15 @@ alter table portal.ledger_entries
   check (kind in ('deposit', 'withdraw', 'settlement', 'adjust', 'mgmt_fee', 'royalty'));
 
 
+-- =====================================================================
+-- ## 054_mgmt_fee_auto.sql
+-- 月額管理手数料の自動引き落としフラグ（#33）。
+-- =====================================================================
+
+alter table portal.members add column if not exists mgmt_fee_auto boolean not null default false;
+comment on column portal.members.mgmt_fee_auto is '月額管理手数料の自動引き落とし（true=満了月ごとに自動清算・#33）';
+
+
 -- ## 仕上げ: PostgREST スキーマキャッシュを再読込
 -- #####################################################################
 notify pgrst, 'reload schema';

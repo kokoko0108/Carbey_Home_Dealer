@@ -52,12 +52,12 @@ export default async function MemberTermsPage() {
 
           {consented ? (
             <div className="flex items-center justify-center gap-2 rounded-xl border border-brand-500/30 bg-brand-500/10 px-4 py-3 text-sm font-medium text-brand-300">
-              <CheckCircle2 className="h-4 w-4" /> 利用規約{attachments.length > 0 ? '・各種料金表' : ''}に同意済みです。
+              <CheckCircle2 className="h-4 w-4" /> 利用規約{attachments.length > 0 ? '・別添書類（料金表・規定など）' : ''}に同意済みです。
             </div>
           ) : (
             <>
               {attachments.length > 0 && (
-                <p className="text-center text-xs text-slate-400">上記の利用規約および各種料金表の内容をご確認のうえ、同意してください。</p>
+                <p className="text-center text-xs text-slate-400">上記の利用規約および別添書類（料金表・規定など）の内容をご確認のうえ、同意してください。</p>
               )}
               <ConsentButton />
             </>

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireFeature } from '@/lib/auth/session'
 import { createInvoice, createSlotPurchaseInvoice, recordPayment, markBilled, cancelInvoice, deleteInvoice } from '@/lib/portal/billing'
-import { runMonthlyMgmtFee } from '@/lib/portal/mgmt-fee'
+import { runMonthlyMgmtFee, setMgmtFeeAuto } from '@/lib/portal/mgmt-fee'
 import { redirect } from 'next/navigation'
 import type { InvoiceKind } from '@/types/database'
 
@@ -11,6 +11,15 @@ const KINDS: InvoiceKind[] = ['joining', 'system_fee', 'monthly', 'royalty', 'ma
 
 function num(v: FormDataEntryValue | null): number {
   return Number(String(v ?? '').replace(/[^\d]/g, ''))
+}
+
+/** #33 月額管理手数料の「自動引き落とし」ON/OFF を切り替える（本部）。 */
+export async function setMgmtFeeAutoAction(formData: FormData) {
+  await requireFeature('members')
+  const memberId = String(formData.get('member_id') ?? '')
+  const on = String(formData.get('on') ?? '') === '1'
+  if (memberId) await setMgmtFeeAuto(memberId, on)
+  revalidatePath(`/admin/members/${memberId}`)
 }
 
 /** 本部が当該加盟者の月額管理手数料（枠数連動・満了月分）を月次で相殺／請求する。 */
