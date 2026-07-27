@@ -448,11 +448,17 @@ export async function cancelDeal(dealId: string, actorId: string | null, actorNa
   // 2) 案件を削除（deal_costs 等は on delete cascade）
   const { error } = await supabase.from('vehicle_deals').delete().eq('id', dealId)
   if (error) throw new Error(error.message)
+  // 3) #39 連動：半自動の案件は紐づくオーダーもキャンセルに（「オーダー=対応中/納品完了・案件=取消」の矛盾を防ぐ）
+  if (deal.order_id) {
+    await supabase.from('orders')
+      .update({ status: 'cancelled', reject_reason: '車両案件の取消により連動でキャンセル' } as never)
+      .eq('id', deal.order_id)
+  }
   await writeAuditLog({
     actorId, actorName,
     action: 'deal.cancel', targetType: 'deal', targetId: dealId,
     targetLabel: label,
-    detail: `車両案件（起票）を取消（ステージ：${deal.status}）。紐づく精算・ロイヤリティの記帳を戻しました。`,
+    detail: `車両案件（起票）を取消（ステージ：${deal.status}）。紐づく精算・ロイヤリティの記帳を戻し${deal.order_id ? '、オーダーもキャンセルに連動し' : ''}ました。`,
   })
 }
 

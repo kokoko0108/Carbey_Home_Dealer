@@ -139,7 +139,17 @@ export default async function AutoCapacityPage({ searchParams }: { searchParams:
                   <tr key={m.memberId} className="hover:bg-slate-50">
                     <td className="px-5 py-3 text-slate-800">{m.companyName ?? m.memberName}</td>
                     <td className="px-5 py-3 text-slate-600">{m.ownedSlots}</td>
-                    <td className="px-5 py-3 text-slate-600">{m.effectiveSlots}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className={`font-medium ${m.effectiveSlots < m.ownedSlots ? 'text-amber-700' : 'text-slate-700'}`}>{m.effectiveSlots}</span>
+                        {m.effectiveSlots < m.ownedSlots && <span className="text-[11px] text-slate-400">/ 保有{m.ownedSlots}</span>}
+                      </div>
+                      {m.depositLocked ? (
+                        <div className="text-[11px] text-amber-600">預かり金ロック（&lt;{yen(m.minDeposit)}）</div>
+                      ) : m.capitalLimited ? (
+                        <div className="text-[11px] text-amber-600">資金不足：あと{yen(m.nextSlotShortfallYen)}で{m.effectiveSlots + 1}枠目</div>
+                      ) : null}
+                    </td>
                     <td className="px-5 py-3 text-slate-600">{m.activeCount}</td>
                     <td className={`px-5 py-3 font-medium ${m.availableSlots > 0 ? 'text-emerald-700' : 'text-slate-400'}`}>{m.availableSlots}</td>
                     <td className="px-5 py-3 text-slate-600">{yen(m.autoBalance)}</td>
@@ -160,6 +170,9 @@ export default async function AutoCapacityPage({ searchParams }: { searchParams:
               </tbody>
             </table>
           </div>
+          <p className="border-t border-slate-100 px-5 py-2.5 text-[11px] text-slate-500">
+            「有効枠」＝<span className="font-medium text-slate-600">保有枠</span>と、<span className="font-medium text-slate-600">預かり金で使える枠</span>（預かり金 ÷ 1枠あたり運用資金）の<span className="font-medium text-slate-600">少ない方</span>。預かり金が不足すると保有枠より少なくなります（設定ミスではありません）。1枠あたり運用資金はプラン設定で調整できます。
+          </p>
         </CardBody>
       </Card>
 

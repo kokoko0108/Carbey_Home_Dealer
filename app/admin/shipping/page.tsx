@@ -23,10 +23,11 @@ export default async function AdminShippingPage() {
         <p className="mt-1 text-sm text-slate-500">発地×着地の陸送費を設定します。設定した区間は自動計算、未設定・特殊車は個別見積もりに切り替わります。</p>
       </div>
 
-      {/* 料金の追加 */}
+      {/* 料金の追加・変更 */}
       <Card>
-        <CardHeader title={<span className="flex items-center gap-2"><Plus className="h-4 w-4 text-brand-500" /> 料金を設定（発地 → 着地）</span>} />
+        <CardHeader title={<span className="flex items-center gap-2"><Plus className="h-4 w-4 text-brand-500" /> 料金を設定・変更（発地 → 着地）</span>} />
         <CardBody>
+          <p className="mb-2 text-xs text-slate-400">同じ発地×着地を設定すると、既存の料金が上書き（更新）されます。既存分は下の一覧からも直接変更できます。</p>
           <form action={setRateAction} className="flex flex-wrap items-end gap-2">
             <div>
               <label className="mb-1 block text-xs text-slate-500">発地</label>
@@ -55,7 +56,7 @@ export default async function AdminShippingPage() {
 
       {/* 料金一覧 */}
       <div>
-        <h2 className="mb-2 text-sm font-semibold text-slate-900">設定済みの料金（{rates.length} 区間）</h2>
+        <h2 className="mb-2 text-sm font-semibold text-slate-900">設定済みの料金（{rates.length} 区間）<span className="ml-2 text-xs font-normal text-slate-400">※金額を入力して「更新」でその場で変更できます</span></h2>
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
@@ -72,7 +73,16 @@ export default async function AdminShippingPage() {
                 <tr key={r.id} className="hover:bg-slate-50">
                   <td className="px-4 py-2.5 text-slate-700">{r.from_pref}</td>
                   <td className="px-4 py-2.5 text-slate-700">{r.to_pref}</td>
-                  <td className="px-4 py-2.5 font-medium text-slate-900">{yen(r.amount_yen)}</td>
+                  {/* #38 料金はその場で変更（更新）できる */}
+                  <td className="px-4 py-2.5">
+                    <form action={setRateAction} className="flex items-center gap-1.5">
+                      <input type="hidden" name="from_pref" value={r.from_pref} />
+                      <input type="hidden" name="to_pref" value={r.to_pref} />
+                      <input name="amount" inputMode="numeric" defaultValue={r.amount_yen} className="w-28 rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-900 focus:border-brand-400 focus:outline-none" />
+                      <span className="text-xs text-slate-400">円</span>
+                      <button className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">更新</button>
+                    </form>
+                  </td>
                   <td className="px-4 py-2.5 text-right">
                     <form action={deleteRateAction} className="inline">
                       <input type="hidden" name="id" value={r.id} />

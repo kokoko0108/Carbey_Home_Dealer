@@ -150,9 +150,24 @@ export async function createOwnOrder(
   return data
 }
 
+/**
+ * #39 オーダーに紐づく車両案件を削除し、台帳（精算・ロイヤリティ）も戻す。
+ * オーダーをキャンセルした際に、売上・利益・預かり金の整合を保つ（「キャンセルなのに利益が残る」を防ぐ）。
+ */
+async function purgeOrderDeals(orderId: string): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const { data: deals } = await supabase.from('vehicle_deals').select('id').eq('order_id', orderId)
+  for (const d of (deals ?? []) as { id: string }[]) {
+    await supabase.from('ledger_entries').delete().eq('deal_id', d.id) // 精算・ロイヤリティ等を戻す（残高はトリガで再計算）
+  }
+  await supabase.from('vehicle_deals').delete().eq('order_id', orderId)
+}
+
 /** オーダーのステータスを変更（本部）。 */
 export async function updateOrderStatus(id: string, status: OrderStatus): Promise<void> {
   const supabase = createServiceRoleClient()
+  // #39 キャンセルにするときは、紐づく案件（売却済み含む）を削除し売上・利益を戻す。矛盾状態を作らない。
+  if (status === 'cancelled') await purgeOrderDeals(id)
   const { error } = await supabase.from('orders').update({ status } as never).eq('id', id)
   if (error) throw new Error(error.message)
 }
@@ -185,8 +200,8 @@ export async function rejectOrder(id: string, by: string | null, reason: string)
   if (o.status !== 'received' && o.status !== 'in_progress') throw new Error('承認待ち・対応中のオーダーのみ非承認にできます。')
   const { error } = await supabase.from('orders').update({ status: 'cancelled', reject_reason: reason || null, approved_by: by } as never).eq('id', id)
   if (error) throw new Error(error.message)
-  // 生成済みの案件を削除（仕入れを止める）
-  await supabase.from('vehicle_deals').delete().eq('order_id', id)
+  // 生成済みの案件を削除（仕入れを止める）＋台帳も戻す（#39 整合）
+  await purgeOrderDeals(id)
   await notifyMember(o.member_id, 'order', '仕入れオーダーが非承認になりました', `オーダー ${o.order_number ?? ''} は承認されませんでした。${reason ? `理由：${reason}` : ''}`)
 }
 
