@@ -5,6 +5,8 @@ import { getSalesSummary, getMonthlySales, getYearlySales, getSalesByMember, lis
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 import { StatCard } from '@/components/ui/StatCard'
 import { LineChart } from '@/components/charts/MiniCharts'
+import { ConfirmSubmit } from '@/components/admin/ConfirmSubmit'
+import { deleteSoldDealAction } from './actions'
 import { yen } from '@/lib/portal/labels'
 
 export const dynamic = 'force-dynamic'
@@ -187,22 +189,30 @@ export default async function AdminSalesPage() {
                   <th className="px-5 py-3 font-medium">費用合計</th>
                   <th className="px-5 py-3 font-medium">粗利益</th>
                   <th className="px-5 py-3 font-medium">売却日</th>
+                  <th className="px-5 py-3 text-right font-medium">操作</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {sold.length === 0 && (
-                  <tr><td colSpan={6} className="px-5 py-8 text-center text-slate-400">売却済みの車両はまだありません。</td></tr>
+                  <tr><td colSpan={7} className="px-5 py-8 text-center text-slate-400">売却済みの車両はまだありません。</td></tr>
                 )}
                 {sold.map((d) => {
                   const profit = d.gross_profit_yen ?? 0
+                  const vehicle = [d.maker, d.car_model, d.year].filter(Boolean).join(' ') || '車両'
                   return (
                     <tr key={d.id} className="hover:bg-slate-50">
                       <td className="px-5 py-3 text-slate-700">{d.member?.company_name ?? d.member?.member_name ?? '—'}</td>
-                      <td className="px-5 py-3 text-slate-700">{[d.maker, d.car_model, d.year].filter(Boolean).join(' ') || '車両'}</td>
+                      <td className="px-5 py-3 text-slate-700">{vehicle}</td>
                       <td className="px-5 py-3 text-slate-700">{yen(d.sale_price_yen)}</td>
                       <td className="px-5 py-3 text-slate-500">{yen(d.cost_total_yen)}</td>
                       <td className={`px-5 py-3 font-medium ${profit >= 0 ? 'text-emerald-700' : 'text-red-600'}`}>{yen(profit)}</td>
                       <td className="px-5 py-3 text-slate-500">{d.sold_at ? new Date(d.sold_at).toLocaleDateString('ja-JP') : '—'}</td>
+                      <td className="px-5 py-3 text-right">
+                        <form action={deleteSoldDealAction}>
+                          <input type="hidden" name="deal_id" value={d.id} />
+                          <ConfirmSubmit message={`「${vehicle}」の販売履歴を削除します。案件ごと取り消し、精算・ロイヤリティの記帳も戻ります（預かり金は元に戻ります）。よろしいですか？`} className="rounded-md border border-red-200 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50">削除</ConfirmSubmit>
+                        </form>
+                      </td>
                     </tr>
                   )
                 })}

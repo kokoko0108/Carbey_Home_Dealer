@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Plus, CheckCircle2, ShoppingCart, Lock, Repeat, Bot, ClipboardList } from 'lucide-react'
+import { Plus, CheckCircle2, ShoppingCart, Lock, Repeat, Bot, ClipboardList, TrendingUp } from 'lucide-react'
 import { requireMember } from '@/lib/auth/session'
 import { listOwnOrders, ORDER_ONBOARDING_GATE, hasTradingOverride } from '@/lib/portal/orders'
 import { getOwnAntiqueGrace } from '@/lib/portal/trading'
@@ -78,9 +78,18 @@ export default async function MemberOrdersPage({
 
       {sp.created && (
         <div className="flex items-center gap-2 rounded-lg border border-brand-500/30 bg-brand-500/10 px-4 py-3 text-sm text-brand-300">
-          <CheckCircle2 className="h-4 w-4" /> 仕入れオーダーを送信しました。次の仕入れは下のフォームから続けて依頼できます。
+          <CheckCircle2 className="h-4 w-4" /> 仕入れオーダーを送信しました。本部の承認後に仕入れを開始します。
         </div>
       )}
+
+      {/* #25 仕入れオーダー数の拡張（拡張オプション）を案内 */}
+      <div className="flex items-start gap-2 rounded-lg border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-xs text-sky-200">
+        <TrendingUp className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sky-300" />
+        <span>
+          <span className="font-semibold text-sky-100">仕入れオーダー数の拡張</span>（同時に進行できるオーダー数の拡大）が可能です。
+          ご希望の場合は本部へご相談ください。加盟店ごとに個別で拡張いたします。
+        </span>
+      </div>
 
       {/* 半自動売買の運用ループ案内（1仕入案ごとに繰り返す） */}
       {canOrder && (
@@ -242,6 +251,9 @@ export default async function MemberOrdersPage({
                       <td className="px-5 py-3 text-slate-300">{o.budget_yen ? yen(o.budget_yen) : '—'}</td>
                       <td className="px-5 py-3">
                         <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[o.status]}`}>{ORDER_STATUS_LABEL[o.status]}</span>
+                        {o.status === 'cancelled' && o.reject_reason && (
+                          <div className="mt-1 max-w-[220px] text-[11px] text-rose-400">非承認：{o.reject_reason}</div>
+                        )}
                       </td>
                       <td className="px-5 py-3">
                         {deal ? (

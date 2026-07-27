@@ -178,6 +178,11 @@ export default async function AutoCapacityPage({ searchParams }: { searchParams:
               <input name="auto_min_deposit" type="number" min="0" step="100000" defaultValue={settings.minDeposit} className="w-44 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
               <p className="mt-1 text-[11px] text-slate-400">これ未満は自動売買の受注をロック（既定100万）。</p>
             </div>
+            <div>
+              <label className="mb-1 block text-xs text-slate-500">起票の最低価格（円）</label>
+              <input name="auto_min_price" type="number" min="0" step="100000" defaultValue={settings.minPrice} className="w-44 rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+              <p className="mt-1 text-[11px] text-slate-400">起票額はこの値より上・1枠あたり上限額より下（0=下限なし・#29）。</p>
+            </div>
             <button className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600">保存</button>
           </form>
         </CardBody>

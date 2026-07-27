@@ -11,9 +11,10 @@ import { getSettingsMap } from '@/lib/portal/settings'
 export type AutoSettings = {
   capacityTotal: number   // 同時運用の全体上限（既定200・拡張可）
   minDeposit: number      // 受注に必要な最低預かり金（既定100万）
+  minPrice: number        // 起票可能な最低価格（既定0＝制限なし・#29）
 }
 
-const DEFAULTS: AutoSettings = { capacityTotal: 200, minDeposit: 1_000_000 }
+const DEFAULTS: AutoSettings = { capacityTotal: 200, minDeposit: 1_000_000, minPrice: 0 }
 
 /** 全体設定を取得（system_settings。未設定は既定値）。リクエスト内キャッシュで往復削減。 */
 export async function getAutoSettings(): Promise<AutoSettings> {
@@ -21,11 +22,12 @@ export async function getAutoSettings(): Promise<AutoSettings> {
   return {
     capacityTotal: map.get('auto_capacity_total') ?? DEFAULTS.capacityTotal,
     minDeposit: map.get('auto_min_deposit') ?? DEFAULTS.minDeposit,
+    minPrice: map.get('auto_min_price') ?? DEFAULTS.minPrice,
   }
 }
 
 /** 全体設定を更新（本部）。 */
-export async function setAutoSetting(key: 'auto_capacity_total' | 'auto_min_deposit', value: number): Promise<void> {
+export async function setAutoSetting(key: 'auto_capacity_total' | 'auto_min_deposit' | 'auto_min_price', value: number): Promise<void> {
   const supabase = createServiceRoleClient()
   const { error } = await supabase
     .from('system_settings')

@@ -4,6 +4,7 @@ import { getOwnOnboarding } from '@/lib/portal/onboarding'
 import { getOwnFlow } from '@/lib/portal/flow'
 import { getFlowBudgets } from '@/lib/portal/budget'
 import { createDealFromOrder } from '@/lib/portal/deals'
+import { notifyMember } from '@/lib/portal/notifications'
 import type { OrderRow, OrderStatus } from '@/types/database'
 
 /**
@@ -145,8 +146,7 @@ export async function createOwnOrder(
     .single<OrderRow>()
   if (error) throw new Error(error.message)
 
-  // フェーズ3：オーダー送信で車両案件を生成し「仕入れ中」に自動遷移
-  await createDealFromOrder(data)
+  // #24 オーダー送信時点では「承認待ち」。案件（仕入れ）は本部の承認時に生成する。
   return data
 }
 
@@ -155,6 +155,39 @@ export async function updateOrderStatus(id: string, status: OrderStatus): Promis
   const supabase = createServiceRoleClient()
   const { error } = await supabase.from('orders').update({ status } as never).eq('id', id)
   if (error) throw new Error(error.message)
+}
+
+/**
+ * #24 本部が仕入れオーダーを承認する（承認待ち → 承認済み・対応中）。
+ * 承認で車両案件（vehicle_deal）を生成し「仕入れ中」に進める。既に案件があれば二重生成しない。加盟店へ通知。
+ */
+export async function approveOrder(id: string, by: string | null): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const { data: o } = await supabase.from('orders').select('*').eq('id', id).maybeSingle<OrderRow>()
+  if (!o) throw new Error('オーダーが見つかりません')
+  if (o.status !== 'received') throw new Error('承認待ちのオーダーのみ承認できます。')
+  // 案件がまだ無ければ生成（承認＝仕入れ開始）
+  const { count } = await supabase.from('vehicle_deals').select('id', { count: 'exact', head: true }).eq('order_id', id)
+  if (!count) await createDealFromOrder(o)
+  const { error } = await supabase.from('orders').update({ status: 'in_progress', approved_at: new Date().toISOString(), approved_by: by } as never).eq('id', id)
+  if (error) throw new Error(error.message)
+  await notifyMember(o.member_id, 'order', '仕入れオーダーが承認されました', `オーダー ${o.order_number ?? ''} を承認しました。仕入れを進めます。`)
+}
+
+/**
+ * #24 本部が仕入れオーダーを非承認にする（→キャンセル＋理由）。
+ * 生成済みの案件（vehicle_deal）は削除して仕入れを止める。理由を加盟店へ通知。
+ */
+export async function rejectOrder(id: string, by: string | null, reason: string): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const { data: o } = await supabase.from('orders').select('member_id, status, order_number').eq('id', id).maybeSingle<{ member_id: string; status: OrderStatus; order_number: string | null }>()
+  if (!o) throw new Error('オーダーが見つかりません')
+  if (o.status !== 'received' && o.status !== 'in_progress') throw new Error('承認待ち・対応中のオーダーのみ非承認にできます。')
+  const { error } = await supabase.from('orders').update({ status: 'cancelled', reject_reason: reason || null, approved_by: by } as never).eq('id', id)
+  if (error) throw new Error(error.message)
+  // 生成済みの案件を削除（仕入れを止める）
+  await supabase.from('vehicle_deals').delete().eq('order_id', id)
+  await notifyMember(o.member_id, 'order', '仕入れオーダーが非承認になりました', `オーダー ${o.order_number ?? ''} は承認されませんでした。${reason ? `理由：${reason}` : ''}`)
 }
 
 /** ステータス別の件数（ダッシュボード用）。 */

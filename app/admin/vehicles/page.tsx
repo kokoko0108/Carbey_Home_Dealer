@@ -6,7 +6,8 @@ import { listMembers, getMember } from '@/lib/portal/members'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 import { yen } from '@/lib/portal/labels'
 import type { DealStatusStage } from '@/types/database'
-import { createDealAction, dealToPreppingAction, dealToListingAction, recordSaleAction } from './actions'
+import { createDealAction, dealToPreppingAction, dealToListingAction, recordSaleAction, createDealCancelAction } from './actions'
+import { ConfirmSubmit } from '@/components/admin/ConfirmSubmit'
 
 export const dynamic = 'force-dynamic'
 
@@ -22,7 +23,7 @@ const COLUMNS: { key: DealStatusStage; icon: typeof Package; tone: string }[] = 
 export default async function AdminVehiclesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ member?: string; error?: string; created?: string }>
+  searchParams: Promise<{ member?: string; error?: string; created?: string; cancelled?: string }>
 }) {
   await requireFeature('reports')
   const sp = await searchParams
@@ -54,6 +55,9 @@ export default async function AdminVehiclesPage({
 
       {sp.created && (
         <div className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">車両を起票しました（仕入れ中）。</div>
+      )}
+      {sp.cancelled && (
+        <div className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-600">起票を取り消しました（紐づく精算・ロイヤリティの記帳も戻しました）。</div>
       )}
       {sp.error && (
         <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">起票できませんでした：{sp.error}</div>
@@ -155,6 +159,19 @@ function DealCard({ deal }: { deal: DealWithMember }) {
             <div className="flex justify-between"><span className="text-slate-400">粗利益</span><span className={profit >= 0 ? 'font-medium text-emerald-700' : 'font-medium text-red-600'}>{yen(profit)}</span></div>
           </div>
         )}
+      </div>
+
+      {/* #32 起票の取消（名前間違い等のやり直し用・確認つき） */}
+      <div className="mt-2 border-t border-slate-100 pt-2">
+        <form action={createDealCancelAction}>
+          <input type="hidden" name="deal_id" value={deal.id} />
+          <ConfirmSubmit
+            message={`「${vehicle}」の起票を取り消します。紐づく精算・ロイヤリティの記帳も戻ります（預かり金は元に戻ります）。よろしいですか？`}
+            className="w-full rounded-md border border-red-200 px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50"
+          >
+            起票を取消
+          </ConfirmSubmit>
+        </form>
       </div>
     </div>
   )

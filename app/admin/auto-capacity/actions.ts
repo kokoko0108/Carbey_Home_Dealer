@@ -40,8 +40,10 @@ export async function updateAutoSettingsAction(formData: FormData) {
   await requireFeature('reports')
   const cap = num(formData.get('auto_capacity_total'))
   const minDep = num(formData.get('auto_min_deposit'))
+  const minPrice = num(formData.get('auto_min_price'))
   if (cap > 0) await setAutoSetting('auto_capacity_total', cap)
   if (minDep >= 0) await setAutoSetting('auto_min_deposit', minDep)
+  if (minPrice >= 0) await setAutoSetting('auto_min_price', minPrice)
   revalidatePath('/admin/auto-capacity')
 }
 

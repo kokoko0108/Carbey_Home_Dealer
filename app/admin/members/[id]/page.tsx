@@ -21,7 +21,7 @@ import { updateMemberAction, issueCredentialsAction, softDeleteMemberAction, res
 import { reviewEvidenceAction } from '../evidence-actions'
 import { confirmSelfAction, setAdminStepAction } from '../funding-actions'
 import { addLedgerEntryAction, deleteLedgerEntryAction } from '../ledger-actions'
-import { createInvoiceAction, createSlotPurchaseAction, runMemberMgmtFeeAction, recordPaymentAction, markBilledAction, cancelInvoiceAction, deleteInvoiceAction } from '../billing-actions'
+import { createInvoiceAction, createSlotPurchaseAction, runMemberMgmtFeeAction, setMgmtFeeAutoAction, recordPaymentAction, markBilledAction, cancelInvoiceAction, deleteInvoiceAction } from '../billing-actions'
 import { getMgmtFeePreview, listMgmtFeeRuns } from '@/lib/portal/mgmt-fee'
 import MemberFormFields from '../MemberFormFields'
 
@@ -40,7 +40,12 @@ const LEDGER_KIND_LABEL: Record<string, string> = {
   settlement: '取引精算',
   adjust: '調整',
   mgmt_fee: '月額管理手数料',
+  royalty: 'ロイヤリティ',
 }
+
+// #26 入金履歴（すべての入金）の表示ラベル
+const PAYMENT_KIND_LABEL: Record<string, string> = { joining: '加盟金', monthly: '月額', other: 'その他' }
+const PAYMENT_STATUS_JA: Record<string, string> = { pending: '確認待ち', confirmed: '入金済み', failed: '失敗' }
 
 export const dynamic = 'force-dynamic'
 
@@ -78,6 +83,14 @@ export default async function MemberDetailPage({
     { billed: 0, paid: 0, overdue: 0 },
   )
   const outstanding = Math.max(0, billingTotals.billed - billingTotals.paid)
+
+  // #26 入金履歴（すべての入金）＝ 仕入れ資金のデポジット入金（台帳）＋ 加盟金/月額など（payments）を時系列で統合
+  const incoming = [
+    ...ledgerEntries
+      .filter((e) => e.kind === 'deposit')
+      .map((e) => ({ id: `l-${e.id}`, date: e.created_at.slice(0, 10), kindLabel: '仕入れ資金デポジット', amount: Math.abs(e.amount_yen), status: '入金済み', note: e.note ?? null })),
+    ...payments.map((p) => ({ id: `p-${p.id}`, date: p.payment_date, kindLabel: PAYMENT_KIND_LABEL[p.kind] ?? p.kind, amount: p.amount_yen, status: PAYMENT_STATUS_JA[p.status] ?? p.status, note: p.note })),
+  ].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
 
   const onboardingPct = member.onboarding_total
     ? Math.round((member.onboarding_done / member.onboarding_total) * 100)
@@ -681,6 +694,13 @@ export default async function MemberDetailPage({
               <button className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700">今月分を相殺／請求する</button>
               <span className="text-xs text-slate-500">満了月分を預かり金から相殺し、不足は請求（デポジット依頼）＋通知します。</span>
             </form>
+            {/* #33 自動引き落とし（満了月ごとに自動清算） */}
+            <form action={setMgmtFeeAutoAction} className="mt-2 flex flex-wrap items-center gap-2 border-t border-amber-100 pt-2">
+              <input type="hidden" name="member_id" value={member.id} />
+              <input type="hidden" name="on" value={member.mgmt_fee_auto ? '0' : '1'} />
+              <span className="text-xs text-slate-600">自動引き落とし：<span className={member.mgmt_fee_auto ? 'font-semibold text-green-700' : 'text-slate-400'}>{member.mgmt_fee_auto ? 'ON（満了月ごとに自動清算）' : 'OFF（手動のみ）'}</span></span>
+              <button className="rounded-lg border border-slate-300 px-3 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50">{member.mgmt_fee_auto ? 'OFFにする' : 'ONにする'}</button>
+            </form>
             {mgmtFeeRuns.length > 0 && (
               <div className="mt-3 space-y-1 border-t border-amber-100 pt-2">
                 <div className="text-[11px] font-medium text-slate-500">実行履歴</div>
@@ -818,9 +838,10 @@ export default async function MemberDetailPage({
         </div>
       </section>
 
-      {/* 入金履歴 */}
+      {/* 入金履歴（すべての入金）#26：デポジット入金＋加盟金/月額を統合表示 */}
       <section className="mt-8">
-        <h2 className="mb-3 text-sm font-semibold text-slate-900">入金履歴（すべての入金）</h2>
+        <h2 className="mb-1 text-sm font-semibold text-slate-900">入金履歴（すべての入金）</h2>
+        <p className="mb-3 text-xs text-slate-500">仕入れ資金のデポジット入金と、加盟金・月額などの入金を時系列でまとめて表示します。</p>
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="border-b border-slate-200 bg-slate-50 text-left text-slate-500">
@@ -832,19 +853,19 @@ export default async function MemberDetailPage({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {payments.length === 0 && (
+              {incoming.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-4 py-6 text-center text-slate-400">
                     入金履歴はありません。
                   </td>
                 </tr>
               )}
-              {payments.map((p) => (
-                <tr key={p.id}>
-                  <td className="px-4 py-2 text-slate-700">{p.payment_date}</td>
-                  <td className="px-4 py-2 text-slate-700">{p.kind}</td>
-                  <td className="px-4 py-2 text-slate-900">{yen(p.amount_yen)}</td>
-                  <td className="px-4 py-2 text-slate-700">{p.status}</td>
+              {incoming.map((r) => (
+                <tr key={r.id}>
+                  <td className="px-4 py-2 text-slate-700">{r.date}</td>
+                  <td className="px-4 py-2 text-slate-700">{r.kindLabel}{r.note ? <span className="ml-2 text-xs text-slate-400">{r.note}</span> : null}</td>
+                  <td className="px-4 py-2 font-medium text-emerald-700">＋{yen(r.amount)}</td>
+                  <td className="px-4 py-2 text-slate-700">{r.status}</td>
                 </tr>
               ))}
             </tbody>

@@ -37,7 +37,7 @@ export default async function AdminFundsPage() {
           <div className="mt-1 text-2xl font-bold text-emerald-700">{yen(totalBalance)}</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
-          <div className="text-sm text-slate-500">加盟金 合計</div>
+          <div className="text-sm text-slate-500">加盟金 合計<span className="ml-1 text-[11px] font-normal text-slate-400">（設定額）</span></div>
           <div className="mt-1 text-2xl font-bold text-slate-900">{yen(totalJoiningFee)}</div>
         </div>
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
@@ -48,6 +48,13 @@ export default async function AdminFundsPage() {
           <div className="text-sm font-medium text-brand-700">総合計</div>
           <div className="mt-1 text-2xl font-bold text-brand-700">{yen(grandTotal)}</div>
         </div>
+      </div>
+
+      {/* #27 集計対象の注記（請求・入金管理との数値差の説明） */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-500">
+        ※ ここの金額は <span className="font-medium text-slate-700">預かり金残高（台帳）／各会員に設定した加盟金／月額管理手数料の計算値</span> です。
+        実際に発行した請求書・入金の実績は「<span className="font-medium text-slate-700">請求・入金管理</span>」でご確認ください。
+        <span className="text-slate-400">（集計対象が異なるため、加盟金の設定額と発行済みの請求額は一致しないことがあります。）</span>
       </div>
 
       {/* 一覧 */}

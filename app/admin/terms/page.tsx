@@ -57,7 +57,7 @@ export default async function AdminTermsPage({
           </div>
           {previewAttachments.length > 0 && (
             <div className="mt-4">
-              <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700"><Receipt className="h-3.5 w-3.5 text-brand-500" /> 各種料金表（別添）</h3>
+              <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-700"><Receipt className="h-3.5 w-3.5 text-brand-500" /> 別添（料金表・規定など）</h3>
               <div className="space-y-3">
                 {previewAttachments.map((att) => (
                   <div key={att.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3">
@@ -137,10 +137,10 @@ export default async function AdminTermsPage({
       {active && (
         <div className="rounded-xl border border-slate-200 bg-white p-5">
           <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <Receipt className="h-4 w-4 text-brand-500" /> 各種料金表（利用規約の別添）
+            <Receipt className="h-4 w-4 text-brand-500" /> 別添（各種料金表・規定など）
           </h2>
           <p className="mb-3 text-xs text-slate-500">
-            「{active.title}」に付随する料金表です。加盟店の規約ページに同居表示され、規約と一緒に同意対象になります。項目は自由に追加できます。
+            「{active.title}」に付随する別添です（例：加修料金表、クレーム規定 など）。加盟店の規約ページに同居表示され、規約と一緒に同意対象になります。<span className="font-medium text-slate-600">項目は何個でも追加できます</span>。
           </p>
 
           {/* 追加/編集フォーム */}
@@ -149,10 +149,10 @@ export default async function AdminTermsPage({
             {editingAttach && <input type="hidden" name="id" value={editingAttach.id} />}
             <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
               {editingAttach ? <FileText className="h-3.5 w-3.5 text-brand-500" /> : <Plus className="h-3.5 w-3.5 text-brand-500" />}
-              {editingAttach ? '料金表を編集' : '料金表を追加'}
+              {editingAttach ? '別添を編集' : '別添を追加'}
             </div>
-            <input name="title" required defaultValue={editingAttach?.title ?? ''} placeholder="料金表のタイトル（例：各種料金表 / 陸送料金表）" className={field} />
-            <textarea name="body" rows={8} defaultValue={editingAttach?.body ?? ''} placeholder="料金表の内容をテキストで入力（改行はそのまま反映されます）" className={`${field} font-mono`} />
+            <input name="title" required defaultValue={editingAttach?.title ?? ''} placeholder="別添のタイトル（例：加修料金表 / クレーム規定）" className={field} />
+            <textarea name="body" rows={8} defaultValue={editingAttach?.body ?? ''} placeholder="内容をテキストで入力（改行はそのまま反映されます）" className={`${field} font-mono`} />
             <div className="flex justify-end gap-2">
               {editingAttach && <a href="/admin/terms" className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-600 hover:bg-white">新規に切替</a>}
               <button className="rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-brand-600">保存</button>
@@ -161,7 +161,7 @@ export default async function AdminTermsPage({
 
           {/* 料金表一覧 */}
           <ul className="divide-y divide-slate-100">
-            {attachments.length === 0 && <li className="py-3 text-center text-xs text-slate-400">料金表はまだありません。</li>}
+            {attachments.length === 0 && <li className="py-3 text-center text-xs text-slate-400">別添はまだありません。</li>}
             {attachments.map((att) => (
               <li key={att.id} className="flex items-center gap-3 py-2.5">
                 <FileText className="h-4 w-4 shrink-0 text-slate-400" />
@@ -176,7 +176,7 @@ export default async function AdminTermsPage({
             ))}
           </ul>
           <p className="mt-2 text-[11px] text-slate-400">
-            ※ 料金表を変更した場合、既存加盟店にも再同意を求めるには、規約を編集・再公開して新バージョンを発行してください。
+            ※ 別添（料金表・規定など）を変更した場合、既存加盟店にも再同意を求めるには、規約を編集・再公開して新バージョンを発行してください。
           </p>
         </div>
       )}

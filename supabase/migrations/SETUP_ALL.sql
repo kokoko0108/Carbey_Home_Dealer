@@ -3992,6 +3992,38 @@ alter table portal.plans add column if not exists royalty_pct numeric(5,2) not n
 comment on column portal.plans.royalty_pct is 'ロイヤリティ料率（％）。プランごとに設定（#20）';
 
 
+-- =====================================================================
+-- ## 052_order_approval.sql
+-- 半自動売買オーダーの承認/非承認（#24）。received=承認待ち→承認(in_progress)/非承認(cancelled+理由)。
+-- =====================================================================
+
+alter table portal.orders add column if not exists reject_reason text;
+alter table portal.orders add column if not exists approved_at   timestamptz;
+alter table portal.orders add column if not exists approved_by   uuid references auth.users(id) on delete set null;
+comment on column portal.orders.reject_reason is '非承認の理由（本部が入力・クイック理由も可・#24）';
+comment on column portal.orders.approved_at is '承認日時（#24）';
+
+
+-- =====================================================================
+-- ## 053_ledger_royalty_kind.sql
+-- 預かり金台帳に「ロイヤリティ」種別を追加（#30・売却時に粗利×料率を控除）。
+-- =====================================================================
+
+alter table portal.ledger_entries drop constraint if exists ledger_entries_kind_check;
+alter table portal.ledger_entries
+  add constraint ledger_entries_kind_check
+  check (kind in ('deposit', 'withdraw', 'settlement', 'adjust', 'mgmt_fee', 'royalty'));
+
+
+-- =====================================================================
+-- ## 054_mgmt_fee_auto.sql
+-- 月額管理手数料の自動引き落としフラグ（#33）。
+-- =====================================================================
+
+alter table portal.members add column if not exists mgmt_fee_auto boolean not null default false;
+comment on column portal.members.mgmt_fee_auto is '月額管理手数料の自動引き落とし（true=満了月ごとに自動清算・#33）';
+
+
 -- ## 仕上げ: PostgREST スキーマキャッシュを再読込
 -- #####################################################################
 notify pgrst, 'reload schema';
