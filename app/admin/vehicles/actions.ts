@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireFeature } from '@/lib/auth/session'
-import { createManualDeal, moveToPrepping, moveToListing, recordSale, settleAndDeliver, cancelSettlement, setDealDestination, setPrepChecklist, DEFAULT_FROM_PREF } from '@/lib/portal/deals'
+import { createManualDeal, moveToPrepping, moveToListing, recordSale, settleAndDeliver, cancelSettlement, cancelDeal, setDealDestination, setPrepChecklist, DEFAULT_FROM_PREF } from '@/lib/portal/deals'
 import { addDealCost, updateDealCost, deleteDealCost, uploadDealEvidence, setDealSourcingEvidence, clearDealSourcingEvidence, setDealResultReport, clearDealResultReport } from '@/lib/portal/deal-costs'
 import { isPrefecture } from '@/lib/portal/prefectures'
 import type { DealCostKind } from '@/types/database'
@@ -41,6 +41,15 @@ export async function createDealAction(formData: FormData) {
   }
   revalidatePath('/admin/vehicles')
   redirect('/admin/vehicles?created=1')
+}
+
+/** #32 起票を取り消す（案件削除＋台帳記帳を戻す）。誤操作防止のためUIで確認する。 */
+export async function createDealCancelAction(formData: FormData) {
+  const session = await requireFeature('reports')
+  const dealId = String(formData.get('deal_id') ?? '')
+  if (dealId) await cancelDeal(dealId, session.userId, session.name)
+  revalidatePath('/admin/vehicles')
+  redirect('/admin/vehicles?cancelled=1')
 }
 
 /** 商品化中へ。 */

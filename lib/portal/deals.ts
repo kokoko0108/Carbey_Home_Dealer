@@ -5,6 +5,7 @@ import { quoteShipping } from '@/lib/portal/shipping'
 import { getMemberAutoCapacity } from '@/lib/portal/auto-trading'
 import { getSetting } from '@/lib/portal/settings'
 import { getConsumptionTaxPct, taxOf } from '@/lib/portal/mgmt-fee'
+import { writeAuditLog } from '@/lib/portal/audit'
 import type { VehicleDealRow, DealStatusStage, OrderRow } from '@/types/database'
 
 /**
@@ -431,6 +432,28 @@ export async function settleAndDeliver(dealId: string, userId: string, isStaff: 
     } as never)
     .eq('id', dealId)
   if (error) throw new Error(error.message)
+}
+
+/**
+ * #32 起票の取消：車両案件を削除し、紐づく台帳記帳（精算・ロイヤリティ）を戻す。
+ *   名前間違い等のやり直し用。売却せずに潰せるようにする（下位権限者の事故防止）。監査ログを残す。
+ */
+export async function cancelDeal(dealId: string, actorId: string | null, actorName: string | null): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const deal = await getDeal(dealId)
+  if (!deal) throw new Error('案件が見つかりません')
+  const label = [deal.maker, deal.car_model].filter(Boolean).join(' ') || '車両案件'
+  // 1) この案件に紐づく台帳記帳を削除（精算・ロイヤリティ等）→ 預かり金残高はトリガで自動再計算＝元に戻る
+  await supabase.from('ledger_entries').delete().eq('deal_id', dealId)
+  // 2) 案件を削除（deal_costs 等は on delete cascade）
+  const { error } = await supabase.from('vehicle_deals').delete().eq('id', dealId)
+  if (error) throw new Error(error.message)
+  await writeAuditLog({
+    actorId, actorName,
+    action: 'deal.cancel', targetType: 'deal', targetId: dealId,
+    targetLabel: label,
+    detail: `車両案件（起票）を取消（ステージ：${deal.status}）。紐づく精算・ロイヤリティの記帳を戻しました。`,
+  })
 }
 
 /**
