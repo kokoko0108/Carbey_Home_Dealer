@@ -2,7 +2,8 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, Package, Wrench, Store, Truck, CheckCircle2 } from 'lucide-react'
 import { requireFeature } from '@/lib/auth/session'
-import { getDeal, getSettlementPreview, DEAL_STAGE_LABEL, DEFAULT_FROM_PREF } from '@/lib/portal/deals'
+import { getDeal, getSettlementPreview, DEAL_STAGE_LABEL } from '@/lib/portal/deals'
+import { getShippingFromPref, getShippingDefaultToPref } from '@/lib/portal/shipping'
 import { listDealCosts } from '@/lib/portal/deal-costs'
 import { getMember } from '@/lib/portal/members'
 import { PREFECTURES } from '@/lib/portal/prefectures'
@@ -29,10 +30,11 @@ export default async function AdminDealDetailPage({
   const sp = await searchParams
   const deal = await getDeal(id)
   if (!deal) notFound()
+  const [fromPref, defaultToPref] = await Promise.all([getShippingFromPref(), getShippingDefaultToPref()]) // #50 発地・#52 デフォルト陸送先
   const [member, costs, preview] = await Promise.all([
     getMember(deal.member_id),
     listDealCosts(id),
-    getSettlementPreview(id, DEFAULT_FROM_PREF),
+    getSettlementPreview(id, fromPref),
   ])
   const costTotal = costs.reduce((s, c) => s + (c.amount_yen ?? 0), 0)
   // 費目の編集は「精算前かつ売却前」まで（仕入れ中／商品化中／販売中）
@@ -148,13 +150,13 @@ export default async function AdminDealDetailPage({
               <input type="hidden" name="deal_id" value={deal.id} />
               <div>
                 <label className="mb-1 block text-xs text-slate-500">陸送先（着地県）</label>
-                <select name="to_pref" defaultValue={deal.to_pref ?? ''} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm">
+                <select name="to_pref" defaultValue={deal.to_pref ?? defaultToPref ?? ''} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm">
                   <option value="" disabled>選択</option>
                   {PREFECTURES.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
               <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50">設定</button>
-              <span className="pb-1 text-[11px] text-slate-400">設定すると精算時に陸送費を自動計算（発地：{DEFAULT_FROM_PREF}）</span>
+              <span className="pb-1 text-[11px] text-slate-400">設定すると精算時に陸送費を自動計算（発地：{fromPref}）</span>
             </form>
           )}
           <dl className="space-y-1.5 text-sm">

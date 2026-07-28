@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Package, Wrench, CheckCircle2, ArrowRight, Loader2 } from 'lucide-react'
+import { Package, Wrench, CheckCircle2, ArrowRight, Loader2, AlertTriangle } from 'lucide-react'
 import { moveToPreppingAction, markDeliveredAction } from '@/app/portal/orders/deal-actions'
 import type { VehicleDealRow } from '@/types/database'
 
@@ -18,6 +18,7 @@ const ORDER = ['ordered', 'sourcing', 'prepping', 'delivered']
 export default function DealBoard({ deal }: { deal: VehicleDealRow }) {
   const [pending, start] = useTransition()
   const [error, setError] = useState('')
+  const [showConfirm, setShowConfirm] = useState(false) // #51 受け取り完了の誤操作防止ポップアップ
   const idx = ORDER.indexOf(deal.status)
 
   const toPrepping = () => {
@@ -25,7 +26,8 @@ export default function DealBoard({ deal }: { deal: VehicleDealRow }) {
     const fd = new FormData(); fd.set('deal_id', deal.id)
     start(async () => { const r = await moveToPreppingAction(fd); if (!r.ok) setError(r.error ?? '') })
   }
-  const receive = () => {
+  const doReceive = () => {
+    setShowConfirm(false)
     setError('')
     const fd = new FormData(); fd.set('deal_id', deal.id)
     start(async () => { const r = await markDeliveredAction(fd); if (!r.ok) setError(r.error ?? '') })
@@ -77,13 +79,38 @@ export default function DealBoard({ deal }: { deal: VehicleDealRow }) {
           </button>
         )}
         {(deal.status === 'sourcing' || deal.status === 'prepping') && (
-          <button onClick={receive} disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50">
+          <button onClick={() => setShowConfirm(true)} disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-1.5 text-xs font-semibold text-white hover:bg-brand-600 disabled:opacity-50">
             {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
             受け取り完了（取引終了）
           </button>
         )}
       </div>
       {error && <p className="mt-2 text-right text-[11px] text-rose-400">{error}</p>}
+
+      {/* #51 受け取り完了の誤操作防止ポップアップ（注意書き付き） */}
+      {showConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-sm rounded-2xl border border-carbon-700 bg-carbon-900 p-5 shadow-2xl">
+            <div className="mb-3 flex items-center gap-2 text-white">
+              <AlertTriangle className="h-5 w-5 text-amber-400" />
+              <h3 className="text-base font-bold">受け取り完了（取引終了）</h3>
+            </div>
+            <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-sm font-medium leading-relaxed text-amber-200">
+              受け取り後に実行してください。費用追加漏れ・再申請は再申請手数料が発生します。
+            </div>
+            <p className="mb-4 text-xs leading-relaxed text-slate-400">
+              実行すると取引終了となり、精算が自動で確定します。以降は費用の追加・修正ができません。よろしいですか？
+            </p>
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setShowConfirm(false)} disabled={pending} className="rounded-lg border border-carbon-600 px-4 py-2 text-sm font-medium text-slate-200 hover:bg-white/5 disabled:opacity-50">キャンセル</button>
+              <button onClick={doReceive} disabled={pending} className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-600 disabled:opacity-50">
+                {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                受け取り完了を実行
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

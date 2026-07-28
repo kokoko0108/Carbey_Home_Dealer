@@ -1,7 +1,7 @@
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import { listDealCosts, addDealCost } from '@/lib/portal/deal-costs'
 import { getLedgerBalance, addLedgerEntry } from '@/lib/portal/ledger'
-import { quoteShipping } from '@/lib/portal/shipping'
+import { quoteShipping, getShippingFromPref, getShippingDefaultToPref } from '@/lib/portal/shipping'
 import { getMemberAutoCapacity } from '@/lib/portal/auto-trading'
 import { getSetting } from '@/lib/portal/settings'
 import { getConsumptionTaxPct, taxOf } from '@/lib/portal/mgmt-fee'
@@ -59,6 +59,7 @@ export async function createDealFromOrder(order: OrderRow): Promise<void> {
     car_model: order.car_model,
     year: order.year,
     order_amount_yen: order.budget_yen,
+    to_pref: await getShippingDefaultToPref(), // #52 デフォルト陸送先（未設定なら null）
     sourcing_at: new Date().toISOString(),
   } as never)
   if (error) throw new Error(error.message)
@@ -141,6 +142,7 @@ export async function createManualDeal(input: {
       car_model: input.carModel ?? null,
       year: input.year ?? null,
       order_amount_yen: input.orderAmountYen ?? null,
+      to_pref: await getShippingDefaultToPref(), // #52 デフォルト陸送先（未設定なら null）
       sourcing_at: new Date().toISOString(),
     } as never)
     .select('*')
@@ -729,8 +731,8 @@ export async function cancelSettlement(dealId: string, userId: string, isStaff: 
 
 /** 旧名互換（精算なしの単純遷移）。既存呼び出し用に残す。 */
 export async function markDelivered(dealId: string, userId: string, isStaff: boolean): Promise<void> {
-  // 既定の発地（拠点）は東京都とする。将来は本部設定から取得。
-  await settleAndDeliver(dealId, userId, isStaff, DEFAULT_FROM_PREF)
+  // #50 発地（拠点）は本部設定（陸送費設定）から取得。料金マスタの発地と揃える。
+  await settleAndDeliver(dealId, userId, isStaff, await getShippingFromPref())
 }
 
 /** 発地（拠点）の既定。将来は本部設定（system_settings）から取得。 */

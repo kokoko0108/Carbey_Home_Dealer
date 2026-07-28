@@ -2,8 +2,25 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireFeature } from '@/lib/auth/session'
-import { setShippingRate, deleteShippingRate, addSpecialMaker, deleteSpecialMaker } from '@/lib/portal/shipping'
+import { setShippingRate, deleteShippingRate, addSpecialMaker, deleteSpecialMaker, setShippingFromPref, setShippingDefaultToPref } from '@/lib/portal/shipping'
 import { isPrefecture } from '@/lib/portal/prefectures'
+
+/** #50 陸送の発地（拠点）を設定。料金マスタの発地と揃えると自動計算が効く。 */
+export async function setFromPrefAction(formData: FormData) {
+  await requireFeature('members')
+  const pref = String(formData.get('from_pref') ?? '')
+  if (!isPrefecture(pref)) return
+  await setShippingFromPref(pref)
+  revalidatePath('/admin/shipping')
+}
+
+/** #52 加盟店のデフォルト陸送先（着地）を設定。空＝デフォルトなし。新規案件・加盟店画面の初期値になる。 */
+export async function setDefaultToPrefAction(formData: FormData) {
+  await requireFeature('members')
+  const pref = String(formData.get('to_pref') ?? '')
+  await setShippingDefaultToPref(pref || null)
+  revalidatePath('/admin/shipping')
+}
 
 /** 陸送費（発地×着地）を設定。 */
 export async function setRateAction(formData: FormData) {

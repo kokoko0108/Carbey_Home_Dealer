@@ -3,7 +3,8 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireFeature } from '@/lib/auth/session'
-import { createManualDeal, moveToPrepping, moveToListing, recordSale, settleAndDeliver, cancelSettlement, cancelDeal, revertStage, resyncDealFinancials, setDealDestination, setPrepChecklist, DEFAULT_FROM_PREF } from '@/lib/portal/deals'
+import { createManualDeal, moveToPrepping, moveToListing, recordSale, settleAndDeliver, cancelSettlement, cancelDeal, revertStage, resyncDealFinancials, setDealDestination, setPrepChecklist } from '@/lib/portal/deals'
+import { getShippingFromPref } from '@/lib/portal/shipping'
 import { addDealCost, updateDealCost, deleteDealCost, uploadDealEvidence, setDealSourcingEvidence, clearDealSourcingEvidence, setDealResultReport, clearDealResultReport } from '@/lib/portal/deal-costs'
 import { isPrefecture } from '@/lib/portal/prefectures'
 import type { DealCostKind } from '@/types/database'
@@ -265,7 +266,7 @@ export async function settleDealAction(formData: FormData): Promise<void> {
   const dealId = String(formData.get('deal_id') ?? '')
   if (!dealId) return
   try {
-    await settleAndDeliver(dealId, session.userId, true, DEFAULT_FROM_PREF)
+    await settleAndDeliver(dealId, session.userId, true, await getShippingFromPref())
   } catch (e) {
     if (e instanceof Error && e.message.includes('NEXT_REDIRECT')) throw e
     const msg = e instanceof Error ? e.message : '精算に失敗しました'
