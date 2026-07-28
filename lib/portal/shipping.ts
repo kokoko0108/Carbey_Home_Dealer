@@ -1,10 +1,52 @@
 import { createServiceRoleClient } from '@/lib/supabase/admin'
 import type { ShippingRateRow, SpecialVehicleMakerRow } from '@/types/database'
+import { PREFECTURES, isPrefecture } from '@/lib/portal/prefectures'
+import { getSetting } from '@/lib/portal/settings'
 
 /**
  * 陸送費マスタ＋特殊車個別見積（半自動売買フェーズ5）。
  * 料金は (発地県, 着地県) ペアで設定。特殊車メーカーは「個別見積」に切替。
  */
+
+// #50 発地（拠点）を本部設定で変更可能に。system_settings に value_text が無いため PREFECTURES のindexを value_int に保存。
+const SHIPPING_FROM_KEY = 'shipping_from_pref_idx'
+const SHIPPING_FROM_FALLBACK = '東京都'
+
+/** 陸送の発地（拠点）を取得。未設定なら既定（東京都）。料金設定・自動計算の発地に使う。 */
+export async function getShippingFromPref(): Promise<string> {
+  const idx = await getSetting(SHIPPING_FROM_KEY, -1)
+  return idx >= 0 && idx < PREFECTURES.length ? PREFECTURES[idx] : SHIPPING_FROM_FALLBACK
+}
+
+/** 陸送の発地（拠点）を設定（本部）。料金マスタの発地と揃える。 */
+export async function setShippingFromPref(pref: string): Promise<void> {
+  if (!isPrefecture(pref)) throw new Error('都道府県を選択してください。')
+  const idx = PREFECTURES.indexOf(pref)
+  const supabase = createServiceRoleClient()
+  const { error } = await supabase
+    .from('system_settings')
+    .upsert({ key: SHIPPING_FROM_KEY, value_int: idx, note: `陸送の発地：${pref}` } as never, { onConflict: 'key' })
+  if (error) throw new Error(error.message)
+}
+
+// #52 加盟店の「陸送先（着地）」の初期値（デフォルト）。案件生成時と画面の初期選択に使う。null=デフォルトなし。
+const SHIPPING_DEFAULT_TO_KEY = 'shipping_default_to_pref_idx'
+
+/** 加盟店のデフォルト陸送先（着地県）を取得。未設定なら null。 */
+export async function getShippingDefaultToPref(): Promise<string | null> {
+  const idx = await getSetting(SHIPPING_DEFAULT_TO_KEY, -1)
+  return idx >= 0 && idx < PREFECTURES.length ? PREFECTURES[idx] : null
+}
+
+/** 加盟店のデフォルト陸送先を設定（本部）。null／空でデフォルトなしに戻す。 */
+export async function setShippingDefaultToPref(pref: string | null): Promise<void> {
+  const idx = pref && isPrefecture(pref) ? PREFECTURES.indexOf(pref) : -1
+  const supabase = createServiceRoleClient()
+  const { error } = await supabase
+    .from('system_settings')
+    .upsert({ key: SHIPPING_DEFAULT_TO_KEY, value_int: idx, note: idx >= 0 ? `加盟店のデフォルト陸送先：${pref}` : '加盟店のデフォルト陸送先：なし' } as never, { onConflict: 'key' })
+  if (error) throw new Error(error.message)
+}
 
 /** 全料金設定を取得（発地→着地順）。 */
 export async function listShippingRates(): Promise<ShippingRateRow[]> {
