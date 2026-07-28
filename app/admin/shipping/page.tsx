@@ -47,19 +47,22 @@ export default async function AdminShippingPage() {
             </div>
           )}
 
-          {/* #52 加盟店のデフォルト陸送先（着地）— 新規案件・加盟店画面の初期値 */}
+          {/* #52改 陸送先の初期値：まず各加盟店の拠点(delivery_pref)、無ければ下のフォールバック */}
           <div className="mt-4 border-t border-slate-100 pt-4">
-            <p className="mb-2 text-xs text-slate-500">加盟店の<span className="font-medium text-slate-600">陸送先（着地）の初期値</span>です。設定すると、新規案件と加盟店の画面で<span className="font-medium text-slate-600">この都道府県が最初から選択</span>されます（加盟店は変更可）。</p>
+            <p className="mb-2 text-xs text-slate-500">
+              新規案件の<span className="font-medium text-slate-600">陸送先（着地）の初期値</span>は、まず<span className="font-medium text-slate-600">各加盟店の拠点（会員詳細・加盟店プロフィールの「陸送先の都道府県」）</span>が使われます。
+              下は、<span className="font-medium text-slate-600">加盟店に拠点が未設定のときのフォールバック</span>です（通常は「なし」で構いません）。
+            </p>
             <form action={setDefaultToPrefAction} className="flex flex-wrap items-end gap-2">
               <div>
-                <label className="mb-1 block text-xs text-slate-500">加盟店のデフォルト陸送先</label>
+                <label className="mb-1 block text-xs text-slate-500">フォールバックの陸送先（任意）</label>
                 <select name="to_pref" defaultValue={defaultToPref ?? ''} className={field}>
-                  <option value="">（デフォルトなし）</option>
+                  <option value="">（なし・加盟店ごとに選択）</option>
                   {PREFECTURES.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
-              <button className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">デフォルトに設定</button>
-              <span className="pb-1 text-xs text-slate-500">現在：<span className="font-medium text-slate-700">{defaultToPref ?? 'デフォルトなし'}</span></span>
+              <button className="rounded-lg border border-slate-300 px-4 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50">保存</button>
+              <span className="pb-1 text-xs text-slate-500">現在：<span className="font-medium text-slate-700">{defaultToPref ?? 'なし'}</span></span>
             </form>
           </div>
         </CardBody>

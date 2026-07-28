@@ -85,6 +85,8 @@ export type MemberRow = {
   delivery_name: string | null
   delivery_address: string | null
   delivery_contact: string | null
+  /** 陸送先（着地）の拠点都道府県（#52改・migration 058）。新規案件の陸送先の初期値 */
+  delivery_pref: string | null
   plan_id: string | null
   contract_date: string | null
   status: MemberStatus
@@ -141,6 +143,7 @@ export type MemberInsert = {
   delivery_name?: string | null
   delivery_address?: string | null
   delivery_contact?: string | null
+  delivery_pref?: string | null
   plan_id?: string | null
   contract_date?: string | null
   status?: MemberStatus

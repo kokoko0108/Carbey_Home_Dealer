@@ -150,7 +150,7 @@ export default async function AdminDealDetailPage({
               <input type="hidden" name="deal_id" value={deal.id} />
               <div>
                 <label className="mb-1 block text-xs text-slate-500">陸送先（着地県）</label>
-                <select name="to_pref" defaultValue={deal.to_pref ?? defaultToPref ?? ''} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm">
+                <select name="to_pref" defaultValue={deal.to_pref ?? member?.delivery_pref ?? defaultToPref ?? ''} className="rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm">
                   <option value="" disabled>選択</option>
                   {PREFECTURES.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
