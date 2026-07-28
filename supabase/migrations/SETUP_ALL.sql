@@ -4087,6 +4087,15 @@ create policy portal_role_perm_staff_read on portal.role_permissions
   for select using (portal.is_staff(auth.uid()));
 
 
+-- =====================================================================
+-- ## 058_member_delivery_pref.sql
+-- #52改 加盟店ごとの陸送先（着地）の拠点都道府県。新規案件の陸送先の初期値になる。
+-- =====================================================================
+
+alter table portal.members add column if not exists delivery_pref text;
+comment on column portal.members.delivery_pref is '陸送先（着地）の拠点都道府県。新規案件の陸送先の初期値になる（#52改）。null なら全体のデフォルト陸送先を使用';
+
+
 -- ## 仕上げ: PostgREST スキーマキャッシュを再読込
 -- #####################################################################
 notify pgrst, 'reload schema';

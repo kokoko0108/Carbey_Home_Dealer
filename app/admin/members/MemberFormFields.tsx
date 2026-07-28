@@ -1,4 +1,5 @@
 import { MEMBER_STATUS_LABEL, PAYMENT_STATUS_LABEL } from '@/lib/portal/labels'
+import { PREFECTURES } from '@/lib/portal/prefectures'
 import type { MemberStatus, PaymentStatus, PlanRow, MemberRow } from '@/types/database'
 
 const field =
@@ -61,6 +62,15 @@ export default function MemberFormFields({
           <div className="sm:col-span-2">
             <label className={label}>陸送先住所</label>
             <input name="delivery_address" defaultValue={member?.delivery_address ?? ''} className={field} />
+          </div>
+          {/* #52改 陸送先の都道府県（拠点）— 新規案件の陸送先の初期値になる */}
+          <div>
+            <label className={label}>陸送先の都道府県（拠点）</label>
+            <select name="delivery_pref" defaultValue={member?.delivery_pref ?? ''} className={field}>
+              <option value="">未設定</option>
+              {PREFECTURES.map((p) => <option key={p} value={p}>{p}</option>)}
+            </select>
+            <p className="mt-1 text-[11px] text-slate-400">この加盟店の新規案件の陸送先の初期値になります。</p>
           </div>
         </div>
       </section>

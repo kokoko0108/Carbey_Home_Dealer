@@ -2,6 +2,7 @@ import { requireMember } from '@/lib/auth/session'
 import { getMemberByUserId } from '@/lib/portal/members'
 import { MEMBER_STATUS_LABEL, PAYMENT_STATUS_LABEL, yen } from '@/lib/portal/labels'
 import { CheckCircle2, Lock } from 'lucide-react'
+import { PREFECTURES } from '@/lib/portal/prefectures'
 import { updateOwnProfileAction } from './actions'
 import type { MemberStatus } from '@/types/database'
 
@@ -88,6 +89,15 @@ export default async function MemberProfilePage({
             <div><label className={labelCls}>陸送先名</label><input name="delivery_name" defaultValue={member.delivery_name ?? ''} className={field} /></div>
             <div><label className={labelCls}>陸送先連絡先</label><input name="delivery_contact" defaultValue={member.delivery_contact ?? ''} className={field} /></div>
             <div className="sm:col-span-2"><label className={labelCls}>陸送先住所</label><input name="delivery_address" defaultValue={member.delivery_address ?? ''} className={field} /></div>
+            {/* #52改 陸送先の都道府県（拠点）— 新規案件の陸送先の初期値になる */}
+            <div>
+              <label className={labelCls}>陸送先の都道府県（拠点）</label>
+              <select name="delivery_pref" defaultValue={member.delivery_pref ?? ''} className={field}>
+                <option value="">未設定</option>
+                {PREFECTURES.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select>
+              <p className="mt-1 text-[11px] text-slate-500">仕入れ案件の陸送先の初期値になります（案件ごとに変更も可能）。</p>
+            </div>
           </div>
         </section>
 

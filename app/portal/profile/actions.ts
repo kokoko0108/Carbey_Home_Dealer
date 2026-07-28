@@ -27,6 +27,7 @@ export async function updateOwnProfileAction(formData: FormData) {
     delivery_name: str(formData.get('delivery_name')),
     delivery_contact: str(formData.get('delivery_contact')),
     delivery_address: str(formData.get('delivery_address')),
+    delivery_pref: str(formData.get('delivery_pref')),
   })
 
   revalidatePath('/portal/profile')

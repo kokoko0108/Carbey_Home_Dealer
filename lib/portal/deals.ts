@@ -47,6 +47,13 @@ export function completedMonths(startISO: string, endISO: string): number {
   return Math.max(0, months)
 }
 
+/** #52改 新規案件の陸送先の初期値：加盟店の拠点(members.delivery_pref)→無ければ全体デフォルト陸送先。 */
+async function resolveDealDefaultToPref(memberId: string): Promise<string | null> {
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase.from('members').select('delivery_pref').eq('id', memberId).maybeSingle<{ delivery_pref: string | null }>()
+  return data?.delivery_pref ?? (await getShippingDefaultToPref())
+}
+
 /** オーダーから案件を生成し「仕入れ中」に自動遷移（オーダー送信直後に呼ぶ）。 */
 export async function createDealFromOrder(order: OrderRow): Promise<void> {
   const supabase = createServiceRoleClient()
@@ -59,7 +66,7 @@ export async function createDealFromOrder(order: OrderRow): Promise<void> {
     car_model: order.car_model,
     year: order.year,
     order_amount_yen: order.budget_yen,
-    to_pref: await getShippingDefaultToPref(), // #52 デフォルト陸送先（未設定なら null）
+    to_pref: await resolveDealDefaultToPref(order.member_id), // #52改 加盟店の拠点→全体デフォルト
     sourcing_at: new Date().toISOString(),
   } as never)
   if (error) throw new Error(error.message)
@@ -142,7 +149,7 @@ export async function createManualDeal(input: {
       car_model: input.carModel ?? null,
       year: input.year ?? null,
       order_amount_yen: input.orderAmountYen ?? null,
-      to_pref: await getShippingDefaultToPref(), // #52 デフォルト陸送先（未設定なら null）
+      to_pref: await resolveDealDefaultToPref(input.memberId), // #52改 加盟店の拠点→全体デフォルト
       sourcing_at: new Date().toISOString(),
     } as never)
     .select('*')

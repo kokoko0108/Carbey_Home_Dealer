@@ -54,7 +54,7 @@ export default async function DealDetailPage({ params }: { params: Promise<{ id:
               <input type="hidden" name="deal_id" value={deal.id} />
               <div>
                 <label className="mb-1 block text-[11px] text-slate-500">陸送先（着地の都道府県）</label>
-                <select name="to_pref" defaultValue={deal.to_pref ?? defaultToPref ?? ''} className="rounded-lg border border-carbon-600 bg-carbon-900 px-2.5 py-1.5 text-sm text-slate-100">
+                <select name="to_pref" defaultValue={deal.to_pref ?? member.delivery_pref ?? defaultToPref ?? ''} className="rounded-lg border border-carbon-600 bg-carbon-900 px-2.5 py-1.5 text-sm text-slate-100">
                   <option value="" disabled>選択</option>
                   {PREFECTURES.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
