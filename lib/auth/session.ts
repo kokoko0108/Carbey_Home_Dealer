@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation'
 import { NextResponse } from 'next/server'
 import { createClient, createAuthClient } from '@/lib/supabase/server'
 import type { UserRole, PortalUserRow } from '@/types/database'
-import { canAccess, type Feature } from '@/lib/auth/permissions'
+import { canAccess, canAccessWith, type Feature } from '@/lib/auth/permissions'
+import { getRolePermissionOverrides } from '@/lib/portal/role-permissions'
 
 export type SessionUser = {
   userId: string
@@ -77,10 +78,14 @@ export async function requireMember(): Promise<SessionUser> {
   return session
 }
 
-/** 機能アクセス権でガード (permission matrix 準拠)。 */
+/** 機能アクセス権でガード (permission matrix + 本部の上書き 準拠)。 */
 export async function requireFeature(feature: Feature): Promise<SessionUser> {
   const session = await requireSession()
-  if (!canAccess(session.role, feature)) redirect('/login?error=forbidden')
+  // 管理者・加盟店は上書き対象外なので既定で即判定。編集可能ロールのみ上書きを反映。
+  const allowed = session.role === 'admin' || session.role === 'member'
+    ? canAccess(session.role, feature)
+    : canAccessWith(session.role, feature, await getRolePermissionOverrides())
+  if (!allowed) redirect('/login?error=forbidden')
   return session
 }
 

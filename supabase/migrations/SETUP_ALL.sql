@@ -4068,6 +4068,25 @@ create policy portal_deleted_deals_staff_read on portal.deleted_deals
   for select using (portal.is_staff(auth.uid()));
 
 
+-- =====================================================================
+-- ## 057_role_permissions.sql
+-- 権限マトリクスの上書き（CRM入力担当・チャット専用のみ・機能ごと可否）。管理者=全権固定・加盟店=固定。
+-- =====================================================================
+
+create table if not exists portal.role_permissions (
+  role       text not null check (role in ('crm_staff', 'chat_only')),
+  feature    text not null,
+  allowed    boolean not null,
+  updated_at timestamptz not null default now(),
+  primary key (role, feature)
+);
+comment on table portal.role_permissions is '権限マトリクスの上書き（CRM入力担当・チャット専用のみ・機能ごと可否）。行が無ければコード既定を使用。管理者は常に全権・加盟店は固定';
+alter table portal.role_permissions enable row level security;
+drop policy if exists portal_role_perm_staff_read on portal.role_permissions;
+create policy portal_role_perm_staff_read on portal.role_permissions
+  for select using (portal.is_staff(auth.uid()));
+
+
 -- ## 仕上げ: PostgREST スキーマキャッシュを再読込
 -- #####################################################################
 notify pgrst, 'reload schema';

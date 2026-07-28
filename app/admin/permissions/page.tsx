@@ -1,11 +1,12 @@
 import { Check, X, UserPlus, ShieldCheck } from 'lucide-react'
 import { requireAdmin } from '@/lib/auth/session'
-import { FEATURES, FEATURE_LABEL, ACCESS_MATRIX, type Access } from '@/lib/auth/permissions'
+import { FEATURES, FEATURE_LABEL, ACCESS_MATRIX, EDITABLE_ROLES, permKey, type Access } from '@/lib/auth/permissions'
 import { listStaff } from '@/lib/portal/staff'
+import { getRolePermissionOverrides, effectiveAllowed } from '@/lib/portal/role-permissions'
 import { ROLE_LABEL } from '@/lib/portal/labels'
 import { Badge } from '@/components/ui/Badge'
 import type { UserRole } from '@/types/database'
-import { updateRoleAction, updateStatusAction, inviteStaffAction } from './actions'
+import { updateRoleAction, updateStatusAction, inviteStaffAction, saveRolePermissionsAction } from './actions'
 
 export const dynamic = 'force-dynamic'
 
@@ -19,6 +20,7 @@ const BANNERS: Record<string, { tone: string; text: string }> = {
   role: { tone: 'bg-green-50 text-green-700', text: 'ロールを変更しました。' },
   status: { tone: 'bg-green-50 text-green-700', text: '利用状態を変更しました。' },
   invited: { tone: 'bg-green-50 text-green-700', text: 'スタッフを招待しました（招待メールを送信）。' },
+  perms: { tone: 'bg-green-50 text-green-700', text: '権限マトリクスを保存しました。' },
 }
 const ERRORS: Record<string, string> = {
   last_admin: '管理者が1名のため降格できません。先に別の管理者を追加してください。',
@@ -44,7 +46,7 @@ export default async function PermissionsPage({
 }) {
   await requireAdmin()
   const sp = await searchParams
-  const staff = await listStaff()
+  const [staff, overrides] = await Promise.all([listStaff(), getRolePermissionOverrides()])
 
   const banner = sp.saved ? BANNERS[sp.saved] : undefined
   const errorText = sp.error ? `${ERRORS[sp.error] ?? '処理に失敗しました。'}${sp.msg ? ` (${sp.msg})` : ''}` : undefined
@@ -151,42 +153,66 @@ export default async function PermissionsPage({
         </div>
       </section>
 
-      {/* ===== 権限マトリクス（参照） ===== */}
+      {/* ===== 権限マトリクス（編集：CRM入力担当・チャット専用のみ・機能ごと可否） ===== */}
       <section>
         <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold text-slate-900">
-          <ShieldCheck className="h-4 w-4 text-slate-400" /> 権限マトリクス（参照）
+          <ShieldCheck className="h-4 w-4 text-slate-400" /> 権限マトリクス
         </h2>
-        <p className="mb-3 text-sm text-slate-500">各ロールが利用できる機能の一覧です。</p>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-slate-500">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">機能</th>
-                {ROLES.map((r) => (
-                  <th key={r} className="px-4 py-3 text-center font-medium">{ROLE_LABEL[r]}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {FEATURES.map((f) => (
-                <tr key={f}>
-                  <td className="px-4 py-3 font-medium text-slate-900">{FEATURE_LABEL[f]}</td>
+        <p className="mb-3 text-sm text-slate-500">
+          各ロールが利用できる機能です。<span className="font-medium text-slate-600">CRM入力担当・チャット専用の列はチェックで可否を編集</span>できます。
+          管理者は常に全権（固定）、加盟店は固定です。
+        </p>
+        <form action={saveRolePermissionsAction}>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">機能</th>
                   {ROLES.map((r) => (
-                    <td key={r} className="px-4 py-3 text-center">
-                      <AccessCell access={ACCESS_MATRIX[f][r]} />
-                    </td>
+                    <th key={r} className="px-4 py-3 text-center font-medium">
+                      {ROLE_LABEL[r]}
+                      {EDITABLE_ROLES.includes(r) ? <span className="ml-1 rounded bg-info-50 px-1 text-[10px] font-normal text-info-700">編集可</span> : <span className="ml-1 text-[10px] font-normal text-slate-400">固定</span>}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <div className="mt-4 flex flex-wrap gap-4 text-xs text-slate-500">
-          <span className="flex items-center gap-1"><Check className="h-3.5 w-3.5 text-green-600" /> 全件アクセス</span>
-          <span className="flex items-center gap-1"><span className="rounded bg-info-50 px-1.5 py-0.5 text-info-700">自分のみ</span> 自分のデータのみ</span>
-          <span className="flex items-center gap-1"><span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">任意</span> プラン等で可変</span>
-          <span className="flex items-center gap-1"><X className="h-3.5 w-3.5 text-slate-300" /> アクセス不可</span>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {FEATURES.map((f) => (
+                  <tr key={f}>
+                    <td className="px-4 py-3 font-medium text-slate-900">{FEATURE_LABEL[f]}</td>
+                    {ROLES.map((r) => (
+                      <td key={r} className="px-4 py-3 text-center">
+                        {EDITABLE_ROLES.includes(r) ? (
+                          <input
+                            type="checkbox"
+                            name={`perm:${r}:${f}`}
+                            value="1"
+                            defaultChecked={effectiveAllowed(r, f, overrides)}
+                            className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-400"
+                          />
+                        ) : (
+                          <AccessCell access={ACCESS_MATRIX[f][r]} />
+                        )}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-4 text-xs text-slate-500">
+              <span className="flex items-center gap-1"><Check className="h-3.5 w-3.5 text-green-600" /> 全件アクセス</span>
+              <span className="flex items-center gap-1"><span className="rounded bg-info-50 px-1.5 py-0.5 text-info-700">自分のみ</span> 自分のデータのみ</span>
+              <span className="flex items-center gap-1"><span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700">任意</span> プラン等で可変</span>
+              <span className="flex items-center gap-1"><X className="h-3.5 w-3.5 text-slate-300" /> アクセス不可</span>
+            </div>
+            <button className="rounded-lg bg-brand-500 px-5 py-2 text-sm font-semibold text-white hover:bg-brand-600">権限マトリクスを保存</button>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-400">
+            ※ チェックを外すと、そのロールはメニュー・画面にアクセスできなくなります（サイドバーにも表示されません）。管理者は締め出し防止のため常に全権です。
+          </p>
+        </form>
       </section>
     </div>
   )

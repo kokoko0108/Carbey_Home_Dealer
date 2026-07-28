@@ -53,12 +53,34 @@ export const ACCESS_MATRIX: Record<Feature, Record<UserRole, Access>> = {
   ai:       { admin: 'full', crm_staff: 'optional', chat_only: 'optional', member: 'optional' },
 }
 
-/** role が feature にアクセスできるか (none 以外なら true)。 */
+/** role が feature にアクセスできるか (none 以外なら true)。コード既定のみ（上書き無視）。 */
 export function canAccess(role: UserRole, feature: Feature): boolean {
   return ACCESS_MATRIX[feature][role] !== 'none'
 }
 
-/** role の feature に対するアクセスレベル。 */
+/** role の feature に対するアクセスレベル（コード既定）。 */
 export function accessLevel(role: UserRole, feature: Feature): Access {
   return ACCESS_MATRIX[feature][role]
+}
+
+// ==== 権限マトリクスの上書き（本部が画面で編集・migration 057） ====
+// 編集できるのは CRM入力担当・チャット専用のみ。管理者は常に全権、加盟店は固定（ガード）。
+export const EDITABLE_ROLES: UserRole[] = ['crm_staff', 'chat_only']
+
+/** 上書きマップのキー。 */
+export function permKey(role: UserRole, feature: Feature): string {
+  return `${role}:${feature}`
+}
+
+/**
+ * 上書きを考慮したアクセス可否（純関数）。overrides は role_permissions を読み込んだ Map<`role:feature`, boolean>。
+ *   - 管理者：常に true（締め出し防止・編集対象外）。
+ *   - 加盟店：コード既定で固定（編集対象外）。
+ *   - CRM入力担当・チャット専用：上書きがあればそれ、無ければコード既定。
+ */
+export function canAccessWith(role: UserRole, feature: Feature, overrides: Map<string, boolean>): boolean {
+  if (role === 'admin') return true
+  if (!EDITABLE_ROLES.includes(role)) return canAccess(role, feature) // 加盟店など＝固定
+  const ov = overrides.get(permKey(role, feature))
+  return ov !== undefined ? ov : canAccess(role, feature)
 }

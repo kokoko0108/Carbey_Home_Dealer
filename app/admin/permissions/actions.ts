@@ -6,9 +6,25 @@ import { requireAdmin } from '@/lib/auth/session'
 import { updateUserRole, updateUserStatus, countAdmins } from '@/lib/portal/staff'
 import { inviteStaff } from '@/lib/portal/invite'
 import { isSmtpConfigured } from '@/lib/email/sendEmail'
+import { saveRolePermissions } from '@/lib/portal/role-permissions'
+import { EDITABLE_ROLES, FEATURES, permKey } from '@/lib/auth/permissions'
 import type { UserRole, UserStatus } from '@/types/database'
 
 const STAFF_ROLES: UserRole[] = ['admin', 'crm_staff', 'chat_only']
+
+/** 権限マトリクスの編集を保存（CRM入力担当・チャット専用のみ・機能ごと可否）。管理者のみ実行可。 */
+export async function saveRolePermissionsAction(formData: FormData) {
+  await requireAdmin()
+  const map = new Map<string, boolean>()
+  for (const role of EDITABLE_ROLES) {
+    for (const feature of FEATURES) {
+      map.set(permKey(role, feature), formData.get(`perm:${role}:${feature}`) === '1')
+    }
+  }
+  await saveRolePermissions(map)
+  revalidatePath('/admin/permissions')
+  redirect('/admin/permissions?saved=perms')
+}
 
 function str(v: FormDataEntryValue | null): string | null {
   const s = typeof v === 'string' ? v.trim() : ''
