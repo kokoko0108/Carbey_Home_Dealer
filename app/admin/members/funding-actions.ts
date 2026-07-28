@@ -2,7 +2,17 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireFeature } from '@/lib/auth/session'
-import { confirmSelf, setAdminStep } from '@/lib/portal/funding'
+import { confirmSelf, setAdminStep, setFundingMethodByAdmin } from '@/lib/portal/funding'
+
+/** ㊹ 本部が資金準備の方法（分岐 自己資金/資金調達）を選択する。 */
+export async function setFundingMethodAction(formData: FormData) {
+  await requireFeature('members')
+  const memberId = String(formData.get('member_id') ?? '')
+  const method = String(formData.get('method') ?? '')
+  if (!memberId || (method !== 'self' && method !== 'loan')) return
+  await setFundingMethodByAdmin(memberId, method)
+  revalidatePath(`/admin/members/${memberId}`)
+}
 
 /** 本部が自己資金を確認/確認取消する。 */
 export async function confirmSelfAction(formData: FormData) {

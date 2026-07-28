@@ -10,6 +10,7 @@ import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 import { yen } from '@/lib/portal/labels'
 import AdminDealCostEditor from '@/components/admin/AdminDealCostEditor'
 import AdminSourcingEvidence from '@/components/admin/AdminSourcingEvidence'
+import { FlowBadge } from '@/components/admin/FlowBadge'
 import AdminResultReport from '@/components/admin/AdminResultReport'
 import AdminPrepChecklist from '@/components/admin/AdminPrepChecklist'
 import { dealToPreppingAction, dealToListingAction, recordSaleAction, settleDealAction, setDestinationAction, cancelSettlementAction } from '../actions'
@@ -35,13 +36,16 @@ export default async function AdminDealDetailPage({
   ])
   const costTotal = costs.reduce((s, c) => s + (c.amount_yen ?? 0), 0)
   // 費目の編集は「精算前かつ売却前」まで（仕入れ中／商品化中／販売中）
-  const costEditable = !deal.settled && deal.status !== 'sold'
+  // #49 自動売買フローは、売却済み・精算済みでも費用明細を修正／削除できる（変更時に精算台帳・粗利・ロイヤリティを再同期）。
+  //     半自動は従来どおり、精算前・売却前のみ編集可（加盟店が絡む精算後の改変を防ぐ）。
+  const costEditable = deal.flow === 'auto' ? true : (!deal.settled && deal.status !== 'sold')
+  const costEditableAfterFinalize = costEditable && (deal.settled || deal.status === 'sold')
   const vehicle = [deal.maker, deal.car_model, deal.year].filter(Boolean).join(' ') || '車両案件'
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
       <Link href="/admin/vehicles" className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-900">
-        <ArrowLeft className="h-4 w-4" /> 車両進捗管理へ
+        <ArrowLeft className="h-4 w-4" /> 自動・半自動売買進捗管理へ
       </Link>
 
       {sp.settled && (
@@ -59,8 +63,10 @@ export default async function AdminDealDetailPage({
       )}
 
       <div>
-        <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900">
+        <h1 className="flex flex-wrap items-center gap-2 text-xl font-bold text-slate-900">
           <Package className="h-5 w-5 text-brand-500" /> {vehicle}
+          {/* #48 個別詳細でも 自動売買 / 半自動売買 を可視化 */}
+          <FlowBadge flow={deal.flow} className="text-[11px]" />
         </h1>
         <p className="text-sm text-slate-500">
           {member && <Link href={`/admin/members/${member.id}`} className="text-brand-600 hover:underline">{member.company_name ?? member.member_name}</Link>}
@@ -122,6 +128,12 @@ export default async function AdminDealDetailPage({
             仕入れ中・商品化中の段階で、発生する費用（仕入価格・整備費・代行手数料など）を自由に追加できます。
             合計は精算時に加盟店の預かり金から自動で差し引かれ、後からの請求は不要です。
           </p>
+          {/* #49 自動売買は売却/精算後でも修正可。変更時は財務が自動で再計算される旨を明示。 */}
+          {costEditableAfterFinalize && (
+            <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+              <span>この案件は{deal.status === 'sold' ? '売却済み' : '精算済み'}ですが、自動売買フローのため費用の修正・削除ができます。変更すると<span className="font-medium">精算（預かり金）・粗利益・ロイヤリティが自動で再計算</span>されます。</span>
+            </div>
+          )}
           <AdminDealCostEditor dealId={deal.id} costs={costs} editable={costEditable} />
         </CardBody>
       </Card>

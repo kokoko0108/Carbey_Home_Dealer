@@ -633,6 +633,26 @@ export type AuditLogRow = {
   created_at: string
 }
 
+/** ㊸ 削除された案件の記録保全ログ（migration 056）。hard-delete 前のスナップショット。 */
+export type DeletedDealRow = {
+  id: string
+  original_deal_id: string | null
+  member_id: string | null
+  flow: string | null
+  maker: string | null
+  car_model: string | null
+  status_at_deletion: string | null
+  sale_price_yen: number | null
+  cost_total_yen: number | null
+  gross_profit_yen: number | null
+  order_id: string | null
+  order_number: string | null
+  reason: string | null
+  deleted_by: string | null
+  deleted_by_name: string | null
+  deleted_at: string
+}
+
 /** 月額管理手数料の月次課金 実行履歴（migration 043）。 */
 export type MemberMgmtFeeRunRow = {
   id: string

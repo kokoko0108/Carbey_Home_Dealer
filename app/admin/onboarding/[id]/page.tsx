@@ -5,9 +5,17 @@ import { requireFeature } from '@/lib/auth/session'
 import { getMember } from '@/lib/portal/members'
 import { listOnboardingTasks, buildOnboardingView, ensureOnboardingTasks, syncOnboardingStatus } from '@/lib/portal/onboarding'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
-import { setTaskStatusAction, seedTasksAction, clearTaskOverrideAction } from '../actions'
+import { seedTasksAction, bulkSetTaskStatusAction } from '../actions'
 
 export const dynamic = 'force-dynamic'
+
+// ㊹ 各行のセグメント選択肢（自動判定タスクは先頭に「自動判定」）。値は t_<taskId> で一括送信。
+const STATUS_OPTIONS = [
+  { v: 'todo', label: '未着手', color: 'peer-checked:bg-slate-600' },
+  { v: 'in_progress', label: '進行中', color: 'peer-checked:bg-brand-500' },
+  { v: 'done', label: '完了', color: 'peer-checked:bg-emerald-500' },
+] as const
+const AUTO_OPTION = { v: 'auto', label: '自動判定', color: 'peer-checked:bg-amber-500' } as const
 
 const STATUS_BADGE = {
   done: 'bg-emerald-50 text-emerald-700',
@@ -15,9 +23,10 @@ const STATUS_BADGE = {
   todo: 'bg-slate-100 text-slate-500',
 } as const
 
-export default async function AdminOnboardingDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function AdminOnboardingDetailPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ saved?: string }> }) {
   await requireFeature('members')
   const { id } = await params
+  const sp = await searchParams
   const member = await getMember(id)
   if (!member) notFound()
 
@@ -63,6 +72,12 @@ export default async function AdminOnboardingDetailPage({ params }: { params: Pr
         <div className={`h-full rounded-full ${view.pct >= 100 ? 'bg-emerald-500' : 'bg-brand-500'}`} style={{ width: `${view.pct}%` }} />
       </div>
 
+      {sp.saved && (
+        <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">
+          <CheckCircle2 className="h-4 w-4" /> 進捗をまとめて更新しました。
+        </div>
+      )}
+
       {tasks.length === 0 ? (
         <Card>
           <CardBody className="flex items-center justify-between">
@@ -74,80 +89,72 @@ export default async function AdminOnboardingDetailPage({ params }: { params: Pr
           </CardBody>
         </Card>
       ) : (
-        view.steps.map((step) => (
-          <Card key={step.key}>
-            <CardHeader
-              title={
-                <span className="flex items-center gap-2">
-                  {step.label}
-                  <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_BADGE[step.status]}`}>
-                    {step.status === 'done' ? '完了' : step.status === 'current' ? '進行中' : '未着手'}
-                  </span>
-                </span>
-              }
-              action={<span className="text-xs text-slate-400">{step.done}/{step.total}</span>}
-            />
-            <CardBody className="p-0">
-              <ul className="divide-y divide-slate-100">
-                {step.tasks.map((t) => (
-                  <li key={t.id} className="flex items-center justify-between px-5 py-3">
-                    <span className={`flex items-center gap-2 text-sm ${t.status === 'done' ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
-                      {t.status === 'done'
-                        ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                        : t.status === 'in_progress'
-                          ? <Loader2 className="h-4 w-4 text-brand-500" />
-                          : <Circle className="h-4 w-4 text-slate-300" />}
-                      {t.title}
-                      {t.optional && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">任意</span>}
+        // ㊹ 全タスクを1フォーム化：各行はラジオで選ぶだけ（都度実行しない）→ 末尾の「まとめて更新」で一括反映。
+        <form action={bulkSetTaskStatusAction}>
+          <input type="hidden" name="member_id" value={id} />
+          <div className="space-y-6">
+            {view.steps.map((step) => (
+              <Card key={step.key}>
+                <CardHeader
+                  title={
+                    <span className="flex items-center gap-2">
+                      {step.label}
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${STATUS_BADGE[step.status]}`}>
+                        {step.status === 'done' ? '完了' : step.status === 'current' ? '進行中' : '未着手'}
+                      </span>
                     </span>
-                    {/* ⑪-① 自動判定タスクも本部が強制的に切り替えられる（上書き＝sync対象外）。
-                           上書き中は「自動判定に戻す」で実体に再同期できる。 */}
-                    <div className="flex items-center gap-2">
-                      {t.link_key && (
-                        <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
-                          <Link href={`/admin/members/${id}`} className="text-brand-600 hover:underline">対応画面へ</Link>
-                          {t.admin_override ? (
-                            <span className="rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">上書き中</span>
-                          ) : (
-                            <span>・自動判定</span>
-                          )}
-                        </span>
-                      )}
-                      <div className="flex items-center gap-1">
-                        {(['todo', 'in_progress', 'done'] as const).map((s) => (
-                          <form key={s} action={setTaskStatusAction}>
-                            <input type="hidden" name="task_id" value={t.id} />
-                            <input type="hidden" name="member_id" value={id} />
-                            <input type="hidden" name="status" value={s} />
-                            <button
-                              className={`rounded-md px-2 py-1 text-[11px] font-medium transition ${
-                                t.status === s
-                                  ? s === 'done' ? 'bg-emerald-500 text-white' : s === 'in_progress' ? 'bg-brand-500 text-white' : 'bg-slate-600 text-white'
-                                  : 'border border-slate-200 text-slate-500 hover:bg-slate-50'
-                              }`}
-                              title={t.link_key ? '自動判定を上書きします（テスト・例外運用）' : undefined}
-                            >
-                              {s === 'todo' ? '未着手' : s === 'in_progress' ? '進行中' : '完了'}
-                            </button>
-                          </form>
-                        ))}
-                        {t.link_key && t.admin_override && (
-                          <form action={clearTaskOverrideAction}>
-                            <input type="hidden" name="task_id" value={t.id} />
-                            <input type="hidden" name="member_id" value={id} />
-                            <button className="ml-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-50" title="上書きを解除し、実体（提出・同意の状況）に合わせて再判定します">
-                              自動判定に戻す
-                            </button>
-                          </form>
-                        )}
-                      </div>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </CardBody>
-          </Card>
-        ))
+                  }
+                  action={<span className="text-xs text-slate-400">{step.done}/{step.total}</span>}
+                />
+                <CardBody className="p-0">
+                  <ul className="divide-y divide-slate-100">
+                    {step.tasks.map((t) => {
+                      // ⑪-① 自動判定タスクは「自動判定」を選ぶと自動運用（上書き解除）。既定は上書き中なら現状態・そうでなければ自動判定。
+                      const isLink = !!t.link_key
+                      const defaultVal: string = isLink ? (t.admin_override ? t.status : 'auto') : t.status
+                      const options = isLink ? [AUTO_OPTION, ...STATUS_OPTIONS] : STATUS_OPTIONS
+                      return (
+                        <li key={t.id} className="flex items-center justify-between gap-3 px-5 py-3">
+                          <span className={`flex items-center gap-2 text-sm ${t.status === 'done' ? 'text-slate-500 line-through' : 'text-slate-800'}`}>
+                            {t.status === 'done'
+                              ? <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                              : t.status === 'in_progress'
+                                ? <Loader2 className="h-4 w-4 text-brand-500" />
+                                : <Circle className="h-4 w-4 text-slate-300" />}
+                            {t.title}
+                            {t.optional && <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-500">任意</span>}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {isLink && (
+                              <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                                <Link href={`/admin/members/${id}`} className="text-brand-600 hover:underline">対応画面へ</Link>
+                                {t.admin_override && <span className="rounded bg-amber-50 px-1.5 py-0.5 font-medium text-amber-700">上書き中</span>}
+                              </span>
+                            )}
+                            <div className="flex items-center gap-1">
+                              {options.map((o) => (
+                                <label key={o.v} className="cursor-pointer">
+                                  <input type="radio" name={`t_${t.id}`} value={o.v} defaultChecked={defaultVal === o.v} className="peer sr-only" />
+                                  <span className={`inline-block rounded-md border border-slate-200 px-2 py-1 text-[11px] font-medium text-slate-500 transition hover:bg-slate-50 peer-checked:border-transparent peer-checked:text-white ${o.color}`}>{o.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </CardBody>
+              </Card>
+            ))}
+          </div>
+
+          {/* ㊹ まとめて更新（画面下に固定） */}
+          <div className="sticky bottom-4 z-10 mt-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
+            <p className="text-[11px] text-slate-500">変更したい行だけ状態を選び、まとめて更新できます。自動判定タスクは「自動判定」を選ぶと自動運用に戻ります。</p>
+            <button className="rounded-lg bg-brand-500 px-6 py-2 text-sm font-semibold text-white hover:bg-brand-600">まとめて更新</button>
+          </div>
+        </form>
       )}
     </div>
   )

@@ -6,7 +6,7 @@ import { getMemberAutoCapacity } from '@/lib/portal/auto-trading'
 import { getSetting } from '@/lib/portal/settings'
 import { getConsumptionTaxPct, taxOf } from '@/lib/portal/mgmt-fee'
 import { writeAuditLog } from '@/lib/portal/audit'
-import type { VehicleDealRow, DealStatusStage, OrderRow } from '@/types/database'
+import type { VehicleDealRow, DealStatusStage, OrderRow, DeletedDealRow } from '@/types/database'
 
 /**
  * 車両案件ライフサイクル（半自動売買フェーズ3）。
@@ -435,6 +435,50 @@ export async function settleAndDeliver(dealId: string, userId: string, isStaff: 
 }
 
 /**
+ * ㊸ 削除された案件を記録保全表（deleted_deals）にスナップショットする。
+ *   案件の hard-delete 前に呼ぶ。集計には影響しない別テーブルに要点（車種・ステージ・売上/利益・理由・削除者）を残す。
+ *   全削除経路（起票の取消＝cancelDeal／オーダーのキャンセル連動＝orders.purgeOrderDeals）から呼ぶ。
+ */
+export async function recordDeletedDeal(
+  deal: VehicleDealRow,
+  input: { reason: string; actorId?: string | null; actorName?: string | null },
+): Promise<void> {
+  const supabase = createServiceRoleClient()
+  let orderNumber: string | null = null
+  if (deal.order_id) {
+    const { data } = await supabase.from('orders').select('order_number').eq('id', deal.order_id).maybeSingle<{ order_number: string | null }>()
+    orderNumber = data?.order_number ?? null
+  }
+  const { error } = await supabase.from('deleted_deals').insert({
+    original_deal_id: deal.id,
+    member_id: deal.member_id,
+    flow: deal.flow ?? null,
+    maker: deal.maker ?? null,
+    car_model: deal.car_model ?? null,
+    status_at_deletion: deal.status,
+    sale_price_yen: deal.sale_price_yen ?? null,
+    cost_total_yen: deal.cost_total_yen ?? null,
+    gross_profit_yen: deal.gross_profit_yen ?? null,
+    order_id: deal.order_id ?? null,
+    order_number: orderNumber,
+    reason: input.reason,
+    deleted_by: input.actorId ?? null,
+    deleted_by_name: input.actorName ?? null,
+  } as never)
+  if (error) throw new Error(error.message)
+}
+
+/** ㊸ 削除された案件の履歴（本部）。memberId 指定でその加盟店ぶん、無しで全体（新しい順）。 */
+export async function listDeletedDeals(memberId?: string, limit = 50): Promise<DeletedDealRow[]> {
+  const supabase = createServiceRoleClient()
+  let q = supabase.from('deleted_deals').select('*').order('deleted_at', { ascending: false }).limit(limit)
+  if (memberId) q = q.eq('member_id', memberId)
+  const { data, error } = await q
+  if (error) throw new Error(error.message)
+  return (data ?? []) as unknown as DeletedDealRow[]
+}
+
+/**
  * #32 起票の取消：車両案件を削除し、紐づく台帳記帳（精算・ロイヤリティ）を戻す。
  *   名前間違い等のやり直し用。売却せずに潰せるようにする（下位権限者の事故防止）。監査ログを残す。
  */
@@ -443,6 +487,8 @@ export async function cancelDeal(dealId: string, actorId: string | null, actorNa
   const deal = await getDeal(dealId)
   if (!deal) throw new Error('案件が見つかりません')
   const label = [deal.maker, deal.car_model].filter(Boolean).join(' ') || '車両案件'
+  // 0) ㊸ 削除前にスナップショットを保全（別テーブル・記録保全）
+  await recordDeletedDeal(deal, { reason: '起票の取消', actorId, actorName })
   // 1) この案件に紐づく台帳記帳を削除（精算・ロイヤリティ等）→ 預かり金残高はトリガで自動再計算＝元に戻る
   await supabase.from('ledger_entries').delete().eq('deal_id', dealId)
   // 2) 案件を削除（deal_costs 等は on delete cascade）
@@ -459,6 +505,60 @@ export async function cancelDeal(dealId: string, actorId: string | null, actorNa
     action: 'deal.cancel', targetType: 'deal', targetId: dealId,
     targetLabel: label,
     detail: `車両案件（起票）を取消（ステージ：${deal.status}）。紐づく精算・ロイヤリティの記帳を戻し${deal.order_id ? '、オーダーもキャンセルに連動し' : ''}ました。`,
+  })
+}
+
+/**
+ * #47 誤操作の訂正：案件を「1つ前のステージ」に戻す（本部）。進行中のどの段階でも巻き戻せる。
+ *   - 商品化中→仕入れ中 / 販売中→商品化中 / 納品完了→販売中（精算済みなら精算記帳も戻す）
+ *   - 売却済み→販売中（販売実績を取消：ロイヤリティ記帳を戻し、販売価格・売却日・費用スナップショットをクリア）
+ *   仕入れ中/オーダーはこれ以上戻せない。監査ログに残す。
+ */
+export async function revertStage(dealId: string, actorId: string | null, actorName: string | null): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const deal = await getDeal(dealId)
+  if (!deal) throw new Error('案件が見つかりません')
+  const label = [deal.maker, deal.car_model].filter(Boolean).join(' ') || '車両案件'
+  const from = deal.status
+  const patch: Record<string, unknown> = {}
+  let to: DealStatusStage
+  switch (from) {
+    case 'prepping':
+      to = 'sourcing'
+      break
+    case 'listing':
+      to = 'prepping'
+      break
+    case 'delivered':
+      to = 'listing'
+      if (deal.settled) {
+        // 精算記帳（settlement）を戻す → 預かり金残高はトリガで再計算
+        await supabase.from('ledger_entries').delete().eq('deal_id', dealId).eq('kind', 'settlement')
+        patch.settled = false
+        patch.settled_amount_yen = null
+        patch.remaining_yen = null
+        patch.delivered_at = null
+      }
+      break
+    case 'sold':
+      to = 'listing'
+      // 販売実績を取消：ロイヤリティ記帳を戻し、販売関連をクリア（粗利は生成列なので自動で0に）
+      await supabase.from('ledger_entries').delete().eq('deal_id', dealId).eq('kind', 'royalty')
+      patch.sale_price_yen = null
+      patch.sold_at = null
+      patch.sold_by = null
+      patch.cost_total_yen = null
+      break
+    default:
+      throw new Error('これ以上前のステージには戻せません（仕入れ中が先頭です）。')
+  }
+  patch.status = to
+  const { error } = await supabase.from('vehicle_deals').update(patch as never).eq('id', dealId)
+  if (error) throw new Error(error.message)
+  await writeAuditLog({
+    actorId, actorName,
+    action: 'deal.revert', targetType: 'deal', targetId: dealId, targetLabel: label,
+    detail: `ステージを「${DEAL_STAGE_LABEL[from]}」→「${DEAL_STAGE_LABEL[to]}」に戻しました（誤操作の訂正）。${from === 'sold' ? '販売実績・ロイヤリティ記帳を取り消しました。' : from === 'delivered' && deal.settled ? '精算記帳を戻しました。' : ''}`,
   })
 }
 
@@ -545,6 +645,49 @@ export async function recordSale(
           dealId,
           createdBy: userId,
         })
+      }
+    }
+  }
+}
+
+/**
+ * #49 費用明細が変わったときに、売却済み／精算済みでも財務スナップショット・台帳を再同期する。
+ *   自動売買で費用を後から修正・削除できるようにするため（cost 変更のたびに呼ぶ）。
+ *   - 精算済み(settled)：精算台帳(settlement)を張り替え、settled_amount_yen / remaining_yen を更新。
+ *   - 売却済み(sold)：cost_total_yen スナップショットを更新（粗利は生成列で自動）＋ロイヤリティを再計算。
+ *   未売却・未精算の案件は何もしない（精算プレビューが都度自動計算のため）。
+ */
+export async function resyncDealFinancials(dealId: string, actorId: string | null): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const deal = await getDeal(dealId)
+  if (!deal) return
+  if (!deal.settled && deal.status !== 'sold') return // 再同期不要
+  const label = [deal.maker, deal.car_model].filter(Boolean).join(' ') || '車両案件'
+  const costs = await listDealCosts(dealId)
+  const newCostTotal = costs.reduce((s, c) => s + (c.amount_yen ?? 0), 0)
+
+  // 精算済み：精算台帳を張り替え、残金を更新（settleAndDeliver と同じ手順）
+  if (deal.settled) {
+    await supabase.from('ledger_entries').delete().eq('deal_id', dealId).eq('kind', 'settlement')
+    const balance = await getLedgerBalance(deal.member_id) // 旧精算を除いた残高
+    const remaining = balance - newCostTotal
+    if (newCostTotal > 0) {
+      await addLedgerEntry({ memberId: deal.member_id, kind: 'settlement', amount: newCostTotal, note: `取引精算（費用修正）：${label}`, dealId, createdBy: actorId })
+    }
+    await supabase.from('vehicle_deals').update({ settled_amount_yen: newCostTotal, remaining_yen: remaining } as never).eq('id', dealId)
+  }
+
+  // 売却済み：費用合計スナップショットを更新（粗利は生成列で自動）＋ロイヤリティ再計算
+  if (deal.status === 'sold') {
+    await supabase.from('vehicle_deals').update({ cost_total_yen: newCostTotal } as never).eq('id', dealId)
+    await supabase.from('ledger_entries').delete().eq('deal_id', dealId).eq('kind', 'royalty')
+    const grossProfit = (deal.sale_price_yen ?? 0) - newCostTotal
+    if (grossProfit > 0) {
+      const { data: mp } = await supabase.from('members').select('plan:plans(royalty_pct)').eq('id', deal.member_id).maybeSingle<{ plan: { royalty_pct: number } | null }>()
+      const rate = mp?.plan?.royalty_pct ?? 0
+      if (rate > 0) {
+        const royalty = Math.round(grossProfit * (rate / 100))
+        if (royalty > 0) await addLedgerEntry({ memberId: deal.member_id, kind: 'royalty', amount: royalty, note: `ロイヤリティ（粗利 ${grossProfit.toLocaleString()}円 × ${rate}%・費用修正）：${label}`, dealId, createdBy: actorId })
       }
     }
   }

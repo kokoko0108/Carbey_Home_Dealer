@@ -60,6 +60,15 @@ export async function chooseMethod(userId: string, method: FundingMethod): Promi
   if (error) throw new Error(error.message)
 }
 
+/** 本部：資金準備の方法（分岐 self/loan）を選択・変更する（㊹ 選択式・可視化）。加盟店選択と同じ funding_applications を更新。 */
+export async function setFundingMethodByAdmin(memberId: string, method: FundingMethod): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const { error } = await supabase
+    .from('funding_applications')
+    .upsert({ member_id: memberId, method, status: 'in_progress' } as never, { onConflict: 'member_id' })
+  if (error) throw new Error(error.message)
+}
+
 /** 加盟店：自己資金額を登録。 */
 export async function setSelfAmount(userId: string, amount: number): Promise<void> {
   const supabase = createServiceRoleClient()

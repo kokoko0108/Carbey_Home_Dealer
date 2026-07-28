@@ -3,7 +3,8 @@ import { assertTradingAllowed } from '@/lib/portal/trading'
 import { getOwnOnboarding } from '@/lib/portal/onboarding'
 import { getOwnFlow } from '@/lib/portal/flow'
 import { getFlowBudgets } from '@/lib/portal/budget'
-import { createDealFromOrder } from '@/lib/portal/deals'
+import { createDealFromOrder, recordDeletedDeal } from '@/lib/portal/deals'
+import type { VehicleDealRow } from '@/types/database'
 import { notifyMember } from '@/lib/portal/notifications'
 import type { OrderRow, OrderStatus } from '@/types/database'
 
@@ -154,10 +155,11 @@ export async function createOwnOrder(
  * #39 オーダーに紐づく車両案件を削除し、台帳（精算・ロイヤリティ）も戻す。
  * オーダーをキャンセルした際に、売上・利益・預かり金の整合を保つ（「キャンセルなのに利益が残る」を防ぐ）。
  */
-async function purgeOrderDeals(orderId: string): Promise<void> {
+async function purgeOrderDeals(orderId: string, reason: string): Promise<void> {
   const supabase = createServiceRoleClient()
-  const { data: deals } = await supabase.from('vehicle_deals').select('id').eq('order_id', orderId)
-  for (const d of (deals ?? []) as { id: string }[]) {
+  const { data: deals } = await supabase.from('vehicle_deals').select('*').eq('order_id', orderId)
+  for (const d of (deals ?? []) as unknown as VehicleDealRow[]) {
+    await recordDeletedDeal(d, { reason }) // ㊸ 削除前に記録保全
     await supabase.from('ledger_entries').delete().eq('deal_id', d.id) // 精算・ロイヤリティ等を戻す（残高はトリガで再計算）
   }
   await supabase.from('vehicle_deals').delete().eq('order_id', orderId)
@@ -167,7 +169,7 @@ async function purgeOrderDeals(orderId: string): Promise<void> {
 export async function updateOrderStatus(id: string, status: OrderStatus): Promise<void> {
   const supabase = createServiceRoleClient()
   // #39 キャンセルにするときは、紐づく案件（売却済み含む）を削除し売上・利益を戻す。矛盾状態を作らない。
-  if (status === 'cancelled') await purgeOrderDeals(id)
+  if (status === 'cancelled') await purgeOrderDeals(id, 'オーダーのキャンセルに連動')
   const { error } = await supabase.from('orders').update({ status } as never).eq('id', id)
   if (error) throw new Error(error.message)
 }
@@ -201,7 +203,7 @@ export async function rejectOrder(id: string, by: string | null, reason: string)
   const { error } = await supabase.from('orders').update({ status: 'cancelled', reject_reason: reason || null, approved_by: by } as never).eq('id', id)
   if (error) throw new Error(error.message)
   // 生成済みの案件を削除（仕入れを止める）＋台帳も戻す（#39 整合）
-  await purgeOrderDeals(id)
+  await purgeOrderDeals(id, 'オーダーの非承認に連動')
   await notifyMember(o.member_id, 'order', '仕入れオーダーが非承認になりました', `オーダー ${o.order_number ?? ''} は承認されませんでした。${reason ? `理由：${reason}` : ''}`)
 }
 

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { requireFeature } from '@/lib/auth/session'
-import { createManualDeal, moveToPrepping, moveToListing, recordSale, settleAndDeliver, cancelSettlement, cancelDeal, setDealDestination, setPrepChecklist, DEFAULT_FROM_PREF } from '@/lib/portal/deals'
+import { createManualDeal, moveToPrepping, moveToListing, recordSale, settleAndDeliver, cancelSettlement, cancelDeal, revertStage, resyncDealFinancials, setDealDestination, setPrepChecklist, DEFAULT_FROM_PREF } from '@/lib/portal/deals'
 import { addDealCost, updateDealCost, deleteDealCost, uploadDealEvidence, setDealSourcingEvidence, clearDealSourcingEvidence, setDealResultReport, clearDealResultReport } from '@/lib/portal/deal-costs'
 import { isPrefecture } from '@/lib/portal/prefectures'
 import type { DealCostKind } from '@/types/database'
@@ -52,6 +52,15 @@ export async function createDealCancelAction(formData: FormData) {
   redirect('/admin/vehicles?cancelled=1')
 }
 
+/** #47 誤操作の訂正：案件を1つ前のステージに戻す（確認つき）。 */
+export async function revertStageAction(formData: FormData) {
+  const session = await requireFeature('reports')
+  const dealId = String(formData.get('deal_id') ?? '')
+  if (dealId) await revertStage(dealId, session.userId, session.name)
+  revalidatePath('/admin/vehicles')
+  redirect('/admin/vehicles?reverted=1')
+}
+
 /** 商品化中へ。 */
 export async function dealToPreppingAction(formData: FormData) {
   const session = await requireFeature('reports')
@@ -86,7 +95,7 @@ export async function recordSaleAction(formData: FormData) {
 
 /** 本部が費目（諸費用・代行手数料等）を追加する。自由な名称＋分類＋金額＋任意でエビデンス。 */
 export async function addDealCostAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  await requireFeature('reports')
+  const session = await requireFeature('reports')
   const dealId = String(formData.get('deal_id') ?? '')
   const kindRaw = String(formData.get('kind') ?? 'other')
   const kind = (COST_KINDS.includes(kindRaw as DealCostKind) ? kindRaw : 'other') as DealCostKind
@@ -106,6 +115,7 @@ export async function addDealCostAction(formData: FormData): Promise<{ ok: boole
       attachmentName = file.name
     }
     await addDealCost({ dealId, kind, label, amount, note, attachmentPath, attachmentName })
+    await resyncDealFinancials(dealId, session.userId) // #49 売却/精算後でも整合を保つ
     revalidateDeal(dealId)
     return { ok: true }
   } catch (e) {
@@ -115,7 +125,7 @@ export async function addDealCostAction(formData: FormData): Promise<{ ok: boole
 
 /** 費目を更新（名称・分類・金額）。 */
 export async function updateDealCostAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  await requireFeature('reports')
+  const session = await requireFeature('reports')
   const id = String(formData.get('id') ?? '')
   const dealId = String(formData.get('deal_id') ?? '')
   const label = String(formData.get('label') ?? '').trim()
@@ -125,6 +135,7 @@ export async function updateDealCostAction(formData: FormData): Promise<{ ok: bo
   if (!id || !label) return { ok: false, error: '費目名を入力してください' }
   try {
     await updateDealCost(id, { label, amount, kind })
+    if (dealId) await resyncDealFinancials(dealId, session.userId) // #49
     revalidateDeal(dealId)
     return { ok: true }
   } catch (e) {
@@ -134,12 +145,13 @@ export async function updateDealCostAction(formData: FormData): Promise<{ ok: bo
 
 /** 費目を削除。 */
 export async function deleteDealCostAction(formData: FormData): Promise<{ ok: boolean; error?: string }> {
-  await requireFeature('reports')
+  const session = await requireFeature('reports')
   const id = String(formData.get('id') ?? '')
   const dealId = String(formData.get('deal_id') ?? '')
   if (!id) return { ok: false, error: '対象がありません' }
   try {
     await deleteDealCost(id)
+    if (dealId) await resyncDealFinancials(dealId, session.userId) // #49
     revalidateDeal(dealId)
     return { ok: true }
   } catch (e) {

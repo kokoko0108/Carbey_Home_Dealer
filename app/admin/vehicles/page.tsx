@@ -6,8 +6,9 @@ import { listMembers, getMember } from '@/lib/portal/members'
 import { Card, CardHeader, CardBody } from '@/components/ui/Card'
 import { yen } from '@/lib/portal/labels'
 import type { DealStatusStage } from '@/types/database'
-import { createDealAction, dealToPreppingAction, dealToListingAction, recordSaleAction, createDealCancelAction } from './actions'
+import { createDealAction, dealToPreppingAction, dealToListingAction, recordSaleAction, createDealCancelAction, revertStageAction } from './actions'
 import { ConfirmSubmit } from '@/components/admin/ConfirmSubmit'
+import { FlowBadge } from '@/components/admin/FlowBadge'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,7 +24,7 @@ const COLUMNS: { key: DealStatusStage; icon: typeof Package; tone: string }[] = 
 export default async function AdminVehiclesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ member?: string; error?: string; created?: string; cancelled?: string }>
+  searchParams: Promise<{ member?: string; error?: string; created?: string; cancelled?: string; reverted?: string }>
 }) {
   await requireFeature('reports')
   const sp = await searchParams
@@ -46,10 +47,11 @@ export default async function AdminVehiclesPage({
           </Link>
         )}
         <h1 className="flex items-center gap-2 text-xl font-bold text-slate-900">
-          <Package className="h-5 w-5 text-brand-500" /> 車両進捗管理{filterMember ? `：${filterMember.company_name ?? filterMember.member_name}` : ''}
+          <Package className="h-5 w-5 text-brand-500" /> 自動・半自動売買進捗管理{filterMember ? `：${filterMember.company_name ?? filterMember.member_name}` : ''}
         </h1>
         <p className="text-sm text-slate-500">
           仕入れ〜売却までの車両を、ステージ別に一元管理します（半自動＝オーダーから自動起票／全自動＝本部が起票）。
+          各案件は<span className="font-medium text-slate-600">進行中のどの段階でも「← 1つ前のステージに戻す」「この案件をキャンセル」</span>ができます（誤操作の訂正用）。
         </p>
       </div>
 
@@ -57,7 +59,10 @@ export default async function AdminVehiclesPage({
         <div className="rounded-lg bg-green-50 px-4 py-3 text-sm text-green-700">車両を起票しました（仕入れ中）。</div>
       )}
       {sp.cancelled && (
-        <div className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-600">起票を取り消しました（紐づく精算・ロイヤリティの記帳も戻しました）。</div>
+        <div className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-600">案件をキャンセルしました（紐づく精算・ロイヤリティの記帳も戻し、削除履歴に保全しました）。</div>
+      )}
+      {sp.reverted && (
+        <div className="rounded-lg bg-slate-100 px-4 py-3 text-sm text-slate-600">案件を1つ前のステージに戻しました（誤操作の訂正）。</div>
       )}
       {sp.error && (
         <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">起票できませんでした：{sp.error}</div>
@@ -120,7 +125,11 @@ function DealCard({ deal }: { deal: DealWithMember }) {
   const profit = deal.gross_profit_yen ?? 0
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-      <Link href={`/admin/vehicles/${deal.id}`} className="text-sm font-medium text-slate-800 hover:text-brand-600 hover:underline">{vehicle}</Link>
+      <div className="flex items-start justify-between gap-2">
+        <Link href={`/admin/vehicles/${deal.id}`} className="text-sm font-medium text-slate-800 hover:text-brand-600 hover:underline">{vehicle}</Link>
+        {/* #48 自動売買 / 半自動売買 を可視化 */}
+        <FlowBadge flow={deal.flow} />
+      </div>
       <div className="mt-0.5 text-xs text-slate-500">
         {deal.member ? (
           <Link href={`/admin/members/${deal.member.id}`} className="hover:text-brand-600 hover:underline">
@@ -159,17 +168,32 @@ function DealCard({ deal }: { deal: DealWithMember }) {
             <div className="flex justify-between"><span className="text-slate-400">粗利益</span><span className={profit >= 0 ? 'font-medium text-emerald-700' : 'font-medium text-red-600'}>{yen(profit)}</span></div>
           </div>
         )}
+
+        {/* #47 誤操作の訂正：1つ前のステージに戻す（仕入れ中／オーダーは先頭のため不可） */}
+        {(deal.status === 'prepping' || deal.status === 'listing' || deal.status === 'delivered' || deal.status === 'sold') && (
+          <form action={revertStageAction} className="mt-1.5">
+            <input type="hidden" name="deal_id" value={deal.id} />
+            <ConfirmSubmit
+              message={deal.status === 'sold'
+                ? `「${vehicle}」の販売実績を取り消して「販売中」に戻します。ロイヤリティの記帳も戻ります（売上・利益から除外されます）。よろしいですか？`
+                : `「${vehicle}」を1つ前のステージに戻します。よろしいですか？`}
+              className="w-full rounded-md border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+            >
+              ← 1つ前のステージに戻す
+            </ConfirmSubmit>
+          </form>
+        )}
       </div>
 
-      {/* #32 起票の取消（名前間違い等のやり直し用・確認つき） */}
+      {/* #32/#47 この案件をキャンセル（進行中のどの段階でも可・確認つき） */}
       <div className="mt-2 border-t border-slate-100 pt-2">
         <form action={createDealCancelAction}>
           <input type="hidden" name="deal_id" value={deal.id} />
           <ConfirmSubmit
-            message={`「${vehicle}」の起票を取り消します。紐づく精算・ロイヤリティの記帳も戻ります（預かり金は元に戻ります）。よろしいですか？`}
+            message={`「${vehicle}」の案件をキャンセルします（進行中でも可）。紐づく精算・ロイヤリティの記帳も戻り、削除された案件の履歴に保全されます。よろしいですか？`}
             className="w-full rounded-md border border-red-200 px-2 py-1 text-[11px] font-medium text-red-600 hover:bg-red-50"
           >
-            起票を取消
+            この案件をキャンセル
           </ConfirmSubmit>
         </form>
       </div>
